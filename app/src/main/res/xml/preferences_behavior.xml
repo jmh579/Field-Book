@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto">
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
 
     <CheckBoxPreference
         android:defaultValue="false"
@@ -63,5 +62,12 @@
         android:key="FLIP_FLOP_ARROWS"
         android:summary="@string/preferences_general_flip_flop_arrows_description"
         android:title="@string/preferences_general_flip_flop_arrows" />
+
+    <CheckBoxPreference
+        android:defaultValue="false"
+        android:icon="@drawable/keyboard_close"
+        android:key="CLOSE_KEYBOARD_ON_TEXT_TRAIT"
+        android:summary="@string/preferences_behavior_close_keyboard_on_text_trait_description"
+        android:title="@string/preferences_behavior_close_keyboard_on_text_trait" />
 
 </PreferenceScreen>
