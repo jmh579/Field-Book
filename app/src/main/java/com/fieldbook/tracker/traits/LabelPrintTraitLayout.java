@@ -24,6 +24,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.fieldbook.tracker.R;
 import com.fieldbook.tracker.activities.CollectActivity;
+import com.fieldbook.tracker.objects.FieldObject;
 import com.fieldbook.tracker.preferences.GeneralKeys;
 import com.fieldbook.tracker.utilities.BluetoothUtil;
 import com.fieldbook.tracker.utilities.Constants;
@@ -58,6 +59,7 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
 
     private Activity mActivity = null;
 
+    private FieldObject field = null;
     public LabelPrintTraitLayout(Context context) { super(context); }
 
     public LabelPrintTraitLayout(Context context, AttributeSet attrs) { super(context, attrs); }
@@ -163,8 +165,15 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
         String[] prefixTraits = getDatabase().getRangeColumnNames();
         optionsList = new ArrayList<>(Arrays.asList(prefixTraits));
         optionsList.add("date");
-        optionsList.add("trial_name");
+        optionsList.add("field_file_name");
+        optionsList.add("location_name");
         optionsList.add("blank");
+        optionsList.add("seasons");
+        optionsList.add("studyType");
+        optionsList.add("experimentalDesign");
+        optionsList.add("studyCode");
+        optionsList.add("trialName");
+
         options = new String[optionsList.size()];
         optionsList.toArray(options);
 
@@ -202,6 +211,8 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
 
         try {
 
+            int studyId = Integer.parseInt(((CollectActivity) getContext()).getStudyId());
+            field = getDatabase().getFieldObject(studyId);
             // Change spinner visibility, label example image for detailed label option
             labelsize.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
 
@@ -438,14 +449,35 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
 
         String item = (String) spinner.getSelectedItem();
 
+        /**
+         * locationNmae / programName
+         */
         if (item != null) {
             if (item.equals("date")) {
                 value = dateFormat.format(calendar.getTime());
-            } else if (item.equals("trial_name")) {
+            } else if (item.equals("field_file_name")) {
                 value = getPrefs().getString(GeneralKeys.FIELD_FILE, "");
             } else if (item.equals("blank")) {
                 value = "";
-            } else {
+            } else if (item.equals("location_name")) {
+                value = field.getLocation_name();
+            }
+            else if (item.equals("seasons")) {
+                value = field.getSeasons();
+            }
+            else if (item.equals("studyType")) {
+                value = field.getStudyType();
+            }
+            else if (item.equals("experimentalDesign")) {
+                value = field.getExperimentalDesign();
+            }
+            else if (item.equals("studyCode")) {
+                value = field.getStudyCode();
+            }
+            else if (item.equals("trialName")) {
+                value = field.getTrialName();
+            }
+            else {
                 int pos = spinner.getSelectedItemPosition();
                 if (pos < options.length) {
                     String[] v = getDatabase().getDropDownRange(options[pos], getCurrentRange().plot_id);
