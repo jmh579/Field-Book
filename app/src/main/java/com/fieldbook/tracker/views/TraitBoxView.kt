@@ -159,7 +159,6 @@ class TraitBoxView : ConstraintLayout {
                 val imm =
                     context.getSystemService(Service.INPUT_METHOD_SERVICE) as InputMethodManager
                 if (currentTrait!!.format != "text") {
-
                     try {
                         imm.hideSoftInputFromWindow(controller.getInputView().windowToken, 0)
                     } catch (ignore: Exception) {
@@ -174,15 +173,12 @@ class TraitBoxView : ConstraintLayout {
                 }
 
                 //Clear all layouts
-                //controller.getTraitLayouts().hideLayouts()
+                controller.getTraitLayouts().hideLayouts()
 
                 //Get current layout object and make it visible
                 val currentTraitLayout: BaseTraitLayout =
                     controller.getTraitLayouts().getTraitLayout(currentTrait!!.format)
-
-                controller.inflateTrait(currentTraitLayout)
-
-                //currentTraitLayout.visibility = VISIBLE
+                currentTraitLayout.visibility = VISIBLE
 
                 //Call specific load layout code for the current trait layout
                 if (currentTraitLayout != null) {

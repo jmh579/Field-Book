@@ -33,18 +33,31 @@ class ImageTraitAdapter(private val context: Context, private val listener: Imag
 
     }
 
+    private val openClick = View.OnClickListener { view ->
+
+        if (view.tag != null) {
+
+            listener.onItemClicked(view.tag as Model)
+
+        }
+    }
+
+    private val closeClick = View.OnClickListener { view ->
+
+        if (view.tag != null) {
+
+            listener.onItemDeleted(view.tag as Model)
+
+        }
+    }
+
     inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val imageView: ImageView = view.findViewById(R.id.list_item_image_iv)
-        private val closeButton: ImageButton = view.findViewById(R.id.list_item_image_close_btn)
+        val closeButton: ImageButton = view.findViewById(R.id.list_item_image_close_btn)
         init {
             // Define click listener for the ViewHolder's View.
-            view.setOnClickListener {
-                listener.onItemClicked(view.tag as Model)
-            }
-
-            closeButton.setOnClickListener {
-                listener.onItemDeleted(view.tag as Model)
-            }
+            imageView.setOnClickListener(openClick)
+            closeButton.setOnClickListener(closeClick)
         }
     }
 
@@ -52,7 +65,7 @@ class ImageTraitAdapter(private val context: Context, private val listener: Imag
     override fun onCreateViewHolder(viewGroup: ViewGroup, viewType: Int): ViewHolder {
         // Create a new view, which defines the UI of the list item
         val view = LayoutInflater.from(viewGroup.context)
-                .inflate(R.layout.list_item_image, viewGroup, false)
+                .inflate(R.layout.list_item_image_fb, viewGroup, false)
 
         return ViewHolder(view)
     }
@@ -65,6 +78,8 @@ class ImageTraitAdapter(private val context: Context, private val listener: Imag
         with(currentList[position]) {
             viewHolder.imageView.setImageBitmap(decodeBitmap(Uri.parse(this.uri)))
             viewHolder.itemView.tag = this
+            viewHolder.closeButton.tag = this
+            viewHolder.imageView.tag = this
         }
     }
 
@@ -74,11 +89,11 @@ class ImageTraitAdapter(private val context: Context, private val listener: Imag
     class DiffCallback : DiffUtil.ItemCallback<Model>() {
 
         override fun areItemsTheSame(oldItem: Model, newItem: Model): Boolean {
-            return oldItem == newItem && oldItem == oldItem
+            return oldItem == newItem
         }
 
         override fun areContentsTheSame(oldItem: Model, newItem: Model): Boolean {
-            return oldItem == newItem && oldItem == oldItem
+            return oldItem == newItem
         }
     }
 

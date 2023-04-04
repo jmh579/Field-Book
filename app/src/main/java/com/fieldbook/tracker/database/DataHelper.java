@@ -220,6 +220,13 @@ public class DataHelper {
 //                String.valueOf(val), trait});
     }
 
+    public ObservationUnitModel[] getAllUnits(int studyId) {
+
+        open();
+
+        return ObservationUnitDao.Companion.getAll(studyId);
+    }
+
     public ObservationUnitModel[] getAllObservationUnits() {
 
         open();

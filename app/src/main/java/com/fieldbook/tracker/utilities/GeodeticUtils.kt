@@ -72,10 +72,10 @@ class GeodeticUtils {
 
         //Represents what we print to the log
         data class IzString(val startTime: Long, val uniqueId: String, val primaryId: String, val secondaryId: String,
-            val startLat: Double, val startLng: Double, val endLat: Double, val endLng: Double, val azimuth: Double,
+            val startLat: Double, val startLng: Double, val endLat: Double, val endLng: Double, val azimuth: Double, val accuracy: Float,
             val teslas: Double, var bearing: Double?, val distance: Double, var closest: Int) {
             override fun toString(): String {
-                return "$startLat,$startLng,$startTime,$endLat,$endLng,$azimuth,$teslas,$bearing,$distance,$closest,\"${uniqueId.escape()}\",\"${primaryId.escape()}\",\"${secondaryId.escape()}\"\n"
+                return "$startLat,$startLng,$accuracy,$startTime,$endLat,$endLng,$azimuth,$teslas,$bearing,$distance,$closest,\"${uniqueId.escape()}\",\"${primaryId.escape()}\",\"${secondaryId.escape()}\"\n"
             }
         }
 
@@ -129,7 +129,7 @@ class GeodeticUtils {
                     val bearing: Double = angleFromCoordinate(start.latitude, start.longitude, location.latitude, location.longitude)
 
                     val loggedString = IzString(startTime = start.time, uniqueId = coordinate.observation_unit_db_id, primaryId = coordinate.primary_id, secondaryId = coordinate.secondary_id,
-                        startLat = start.latitude, startLng = start.longitude, endLat = location.latitude, endLng = location.longitude, azimuth = azimuth, teslas = teslas, bearing = bearing,
+                        startLat = start.latitude, startLng = start.longitude, endLat = location.latitude, endLng = location.longitude, azimuth = azimuth, accuracy = start.accuracy, teslas = teslas, bearing = bearing,
                         distance = distance, closest = NOT_CLOSEST)
 
                     if (geoNavMethod == "0") { //default distance based method

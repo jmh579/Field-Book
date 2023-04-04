@@ -5,30 +5,29 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 
+import com.fieldbook.tracker.R;
+
 import java.util.ArrayList;
 
 public class LayoutCollections {
     private final ArrayList<BaseTraitLayout> traitLayouts;
 
     public LayoutCollections(Activity _activity) {
+        int[] traitIDs = {
+                R.id.angleLayout, R.id.audioLayout, R.id.barcodeLayout,
+                R.id.booleanLayout, R.id.categoricalLayout, R.id.counterLayout,
+                R.id.dateLayout, R.id.diseaseLayout, R.id.locationLayout,
+                R.id.multicatLayout, R.id.numericLayout, R.id.percentLayout,
+                R.id.photoLayout, R.id.textLayout, R.id.labelprintLayout,
+                R.id.gnssLayout, R.id.usb_camera_layout
+        };
+
         traitLayouts = new ArrayList<>();
-        traitLayouts.add(new TextTraitLayout(_activity));
-        traitLayouts.add(new NumericTraitLayout(_activity));
-        traitLayouts.add(new AngleTraitLayout(_activity));
-        traitLayouts.add(new AudioTraitLayout(_activity));
-        traitLayouts.add(new BarcodeTraitLayout(_activity));
-        traitLayouts.add(new BooleanTraitLayout(_activity));
-        traitLayouts.add(new CategoricalTraitLayout(_activity));
-        traitLayouts.add(new CounterTraitLayout(_activity));
-        traitLayouts.add(new DateTraitLayout(_activity));
-        traitLayouts.add(new DiseaseRatingTraitLayout(_activity));
-        traitLayouts.add(new GNSSTraitLayout(_activity));
-        traitLayouts.add(new LabelPrintTraitLayout(_activity));
-        traitLayouts.add(new LocationTraitLayout(_activity));
-        traitLayouts.add(new MultiCatTraitLayout(_activity));
-        traitLayouts.add(new PercentTraitLayout(_activity));
-        traitLayouts.add(new PhotoTraitLayout(_activity));
-        traitLayouts.add(new UsbCameraTraitLayout(_activity));
+        for (int traitID : traitIDs) {
+            BaseTraitLayout layout = _activity.findViewById(traitID);
+            layout.init(_activity);
+            traitLayouts.add(layout);
+        }
     }
 
     /**
@@ -47,6 +46,12 @@ public class LayoutCollections {
 
     public PhotoTraitLayout getPhotoTrait() {
         return (PhotoTraitLayout) getTraitLayout("photo");
+    }
+
+    public void hideLayouts() {
+        for (BaseTraitLayout layout : traitLayouts) {
+            layout.setVisibility(View.GONE);
+        }
     }
 
     public void deleteTraitListener(String format) {

@@ -23,7 +23,6 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import com.fieldbook.tracker.R
 import com.fieldbook.tracker.activities.CollectActivity
-import com.fieldbook.tracker.database.dao.ObservationUnitDao.Companion.getAll
 import com.fieldbook.tracker.database.models.ObservationUnitModel
 import com.fieldbook.tracker.location.GPSTracker
 import com.fieldbook.tracker.location.gnss.ConnectThread
@@ -81,7 +80,7 @@ class GeoNavHelper @Inject constructor(@ActivityContext private val context: Con
                 //always log external gps updates
                 writeGeoNavLog(
                     mGeoNavLogWriter,
-                    "$lat,$lng,$time,null,null,null,null,null,null,null,null,null,null\n"
+                    "$lat,$lng,${parser.accuracy},$time,null,null,null,null,null,null,null,null,null,null\n"
                 )
                 mExternalLocation = Location("GeoNav Rover")
 
@@ -101,6 +100,7 @@ class GeoNavHelper @Inject constructor(@ActivityContext private val context: Con
                     mExternalLocation?.latitude = latValue
                     mExternalLocation?.longitude = lngValue
                     mExternalLocation?.altitude = altValue
+                    mExternalLocation?.accuracy = parser.accuracy.toFloat()
                 }
             }
         }
@@ -212,7 +212,7 @@ class GeoNavHelper @Inject constructor(@ActivityContext private val context: Con
 
         writeGeoNavLog(
             mGeoNavLogWriter,
-            "start latitude, start longitude, UTC, end latitude, end longitude, azimuth, teslas, bearing, distance, closest, unique id, primary id, secondary id\n"
+            "start latitude, start longitude, accuracy, UTC, end latitude, end longitude, azimuth, teslas, bearing, distance, closest, unique id, primary id, secondary id\n"
         )
     }
 
@@ -310,7 +310,7 @@ class GeoNavHelper @Inject constructor(@ActivityContext private val context: Con
         val studyId: Int = ep.getInt(GeneralKeys.SELECTED_FIELD_ID, 0)
 
         //find all observation units within the field
-        val units = getAll(studyId)
+        val units = (context as CollectActivity).getDatabase().getAllUnits(studyId)
         val coordinates: MutableList<ObservationUnitModel> = ArrayList()
 
         //add all units that have non null coordinates.
@@ -564,7 +564,7 @@ class GeoNavHelper @Inject constructor(@ActivityContext private val context: Con
         writeGeoNavLog(
             mGeoNavLogWriter,
             """
-        ${location.latitude},${location.longitude},${location.time},null,null,null,null,null,null,null,null,null,null
+        ${location.latitude},${location.longitude},${location.accuracy},${location.time},null,null,null,null,null,null,null,null,null,null
         
         """.trimIndent()
         )

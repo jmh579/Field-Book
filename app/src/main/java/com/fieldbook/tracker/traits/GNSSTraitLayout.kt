@@ -81,7 +81,6 @@ class GNSSTraitLayout : BaseTraitLayout, GPSTracker.GPSTrackerListener {
     private lateinit var lngTextView: TextView
     private lateinit var hdopTextView: TextView
     private lateinit var connectGroup: Group
-    private lateinit var connectButton: ImageButton
     private lateinit var collectButton: ImageButton
     private lateinit var disconnectButton: ImageButton
 
@@ -264,8 +263,6 @@ class GNSSTraitLayout : BaseTraitLayout, GPSTracker.GPSTrackerListener {
 
         mActivity = act
 
-        initialize()
-
         chipGroup = act.findViewById(R.id.gnss_trait_averaging_chip_group)
         averageSwitch = act.findViewById(R.id.gnss_trait_averaging_switch)
         connectBtn = act.findViewById(R.id.gnss_connect_button)
@@ -279,6 +276,8 @@ class GNSSTraitLayout : BaseTraitLayout, GPSTracker.GPSTrackerListener {
         connectGroup = act.findViewById(R.id.gnss_group)
         collectButton = act.findViewById(R.id.gnss_collect_button)
         disconnectButton = act.findViewById(R.id.disconnect_button)
+
+        initialize()
 
     }
 
@@ -612,7 +611,7 @@ class GNSSTraitLayout : BaseTraitLayout, GPSTracker.GPSTrackerListener {
         //make connected UI visible
         connectGroup.visibility = View.VISIBLE
 
-        connectButton.visibility = View.GONE
+        connectBtn.visibility = View.GONE
 
         collectButton.setOnClickListener {
 
@@ -628,7 +627,7 @@ class GNSSTraitLayout : BaseTraitLayout, GPSTracker.GPSTrackerListener {
 
         //cancel the thread when the disconnect button is pressed
         disconnectButton.setOnClickListener {
-            connectButton.visibility = View.VISIBLE
+            connectBtn.visibility = View.VISIBLE
             connectGroup.visibility = View.GONE
 
             if (value != null) {

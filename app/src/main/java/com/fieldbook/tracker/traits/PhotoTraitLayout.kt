@@ -21,7 +21,6 @@ import com.fieldbook.tracker.preferences.GeneralKeys
 import com.fieldbook.tracker.provider.GenericFileProvider
 import com.fieldbook.tracker.utilities.DialogUtils
 import com.fieldbook.tracker.utilities.DocumentTreeUtil.Companion.getFieldMediaDirectory
-import com.fieldbook.tracker.utilities.DocumentTreeUtil.Companion.getPlotMedia
 import com.fieldbook.tracker.utilities.Utils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,15 +37,15 @@ class PhotoTraitLayout : BaseTraitLayout, ImageTraitAdapter.ImageItemHandler {
         const val PICTURE_REQUEST_CODE = 252
     }
 
+    private lateinit var captureButton: ImageButton
+
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    private var uris = arrayListOf<Uri>()
+    private var obsCount = 0
 
-    private var currentPhotoPath: Uri? = null
     private var activity: Activity? = null
 
     private lateinit var recyclerView: RecyclerView
-
 
     constructor(context: Context?) : super(context)
     constructor(context: Context?, attrs: AttributeSet?) : super(context, attrs)
@@ -65,8 +64,8 @@ class PhotoTraitLayout : BaseTraitLayout, ImageTraitAdapter.ImageItemHandler {
 
     override fun init(act: Activity) {
 
-        val capture = act.findViewById<ImageButton>(R.id.capture)
-        capture.setOnClickListener(PhotoTraitOnClickListener())
+        captureButton = act.findViewById(R.id.capture)
+        captureButton.setOnClickListener(PhotoTraitOnClickListener())
 
         activity = act
 
@@ -78,13 +77,14 @@ class PhotoTraitLayout : BaseTraitLayout, ImageTraitAdapter.ImageItemHandler {
 
         loadLayoutWork()
 
+        //clear data
+        recyclerView.adapter?.notifyItemRangeRemoved(0,
+            recyclerView.adapter?.itemCount ?: 0)
     }
 
     private fun loadLayoutWork() {
 
         val studyId = (context as CollectActivity).studyId
-
-        uris = arrayListOf()
 
         currentTrait.trait?.let { traitName ->
 
@@ -95,6 +95,7 @@ class PhotoTraitLayout : BaseTraitLayout, ImageTraitAdapter.ImageItemHandler {
                     val plot = currentRange.plot_id
                     val toc = System.currentTimeMillis()
                     val uris = database.getAllObservations(studyId, plot, traitName)
+                    obsCount = uris.size
                     val tic = System.currentTimeMillis()
                     Log.d(TAG, "Photo trait query time ${uris.size} photos: ${(tic-toc)*1e-3}")
 
@@ -102,7 +103,6 @@ class PhotoTraitLayout : BaseTraitLayout, ImageTraitAdapter.ImageItemHandler {
 
                     activity?.runOnUiThread {
                         (recyclerView.adapter as ImageTraitAdapter).submitList(models)
-                        recyclerView.adapter?.notifyItemRangeChanged(0, models.size)
                     }
                 }
 
@@ -362,7 +362,7 @@ class PhotoTraitLayout : BaseTraitLayout, ImageTraitAdapter.ImageItemHandler {
 
         val file = File(context.cacheDir, "temp.jpg")
 
-        file.createNewFile()
+        if (!file.exists()) file.createNewFile()
 
         val uri = GenericFileProvider.getUriForFile(context, "com.fieldbook.tracker.fileprovider", file)
 
@@ -396,12 +396,11 @@ class PhotoTraitLayout : BaseTraitLayout, ImageTraitAdapter.ImageItemHandler {
                     } catch (n: Exception) {
                         0
                     }
-                    val photosDir = getFieldMediaDirectory(context, "photos")
-                    val plot = currentRange.plot_id
-                    val locations = getPlotMedia(photosDir, plot, ".jpg")
+
+                    val photosDir = getFieldMediaDirectory(context, currentTrait.trait)
                     if (photosDir != null) {
                         // Do not take photos if limit is reached
-                        if (m == 0 || locations.size < m) {
+                        if (m == 0 || obsCount < m) {
                             takePicture()
                         } else Utils.makeToast(
                             context,

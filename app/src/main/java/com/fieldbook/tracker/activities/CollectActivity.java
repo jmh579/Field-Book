@@ -195,7 +195,12 @@ public class CollectActivity extends ThemedActivity
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        guiThread.start();
+        try {
+            guiThread.start();
+        } catch (IllegalStateException e) {
+            e.printStackTrace();
+        }
+
         myGuiHandler = new Handler(guiThread.getLooper()) {
             @Override
             public void handleMessage(Message msg) {
@@ -241,6 +246,19 @@ public class CollectActivity extends ThemedActivity
         });
 
         mUsbCameraHelper = new UsbCameraHelper(this);
+
+        mPrefs.edit().putBoolean(GeneralKeys.GEONAV_AUTO, false).apply(); //turn off auto nav
+
+        if (mPrefs.getBoolean(GeneralKeys.ENABLE_GEONAV, false)) {
+
+            //setup logger whenever activity resumes
+            geoNavHelper.setupGeoNavLogger();
+
+            secureBluetooth.withNearby((adapter) -> {
+                geoNavHelper.startGeoNav();
+                return null;
+            });
+        }
 
         loadScreen();
 
@@ -657,13 +675,9 @@ public class CollectActivity extends ThemedActivity
 
         verifyPersonHelper.updateLastOpenedTime();
 
-        geoNavHelper.stopGeoNav();
-
         //save the last used trait
         if (traitBox.getCurrentTrait() != null)
             ep.edit().putString(GeneralKeys.LAST_USED_TRAIT, traitBox.getCurrentTrait().getTrait()).apply();
-
-        geoNavHelper.stopAverageHandler();
 
         super.onPause();
     }
@@ -687,6 +701,9 @@ public class CollectActivity extends ThemedActivity
         mUsbCameraHelper.destroy();
 
         traitLayoutRefresh();
+
+        geoNavHelper.stopGeoNav();
+        geoNavHelper.stopAverageHandler();
 
         super.onDestroy();
     }
@@ -746,19 +763,6 @@ public class CollectActivity extends ThemedActivity
             int[] rangeID = rangeBox.getRangeID();
 
             moveToSearch("search", rangeID, searchRange, searchPlot, null, -1);
-        }
-
-        mPrefs.edit().putBoolean(GeneralKeys.GEONAV_AUTO, false).apply(); //turn off auto nav
-
-        if (mPrefs.getBoolean(GeneralKeys.ENABLE_GEONAV, false)) {
-
-            //setup logger whenever activity resumes
-            geoNavHelper.setupGeoNavLogger();
-
-            secureBluetooth.withNearby((adapter) -> {
-                geoNavHelper.startGeoNav();
-                return null;
-            });
         }
 
         verifyPersonHelper.checkLastOpened();
