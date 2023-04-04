@@ -10,13 +10,39 @@ public class BrapiStudyDetails {
   private String studyDescription;
   private String studyLocation;
   private String commonCropName;
+
+  private String locationName;
+  private String seasons;
+  private String studyType;
+  private String experimentalDesign;
+  private String locationDbId;
+  private String studyCode;
+  private String trialDbId;
+  private String trialName;
   private Integer numberOfPlots;
   private List<String> attributes;
   private List<List<String>> values;
   private List<TraitObject> traits;
   private List<Observation> observations;
 
+  //TODO update with new fields
   public static void merge(BrapiStudyDetails sd1, BrapiStudyDetails sd2) {
+    if (sd2.getLocationName() != null)
+      sd1.setLocationName(sd2.getLocationName());
+    if (sd2.getSeasons() != null)
+      sd1.setSeasons(sd2.getSeasons());
+    if (sd2.getStudyType() != null)
+        sd1.setStudyType(sd2.getStudyType());
+    if (sd2.getExperimentalDesign() != null)
+        sd1.setExperimentalDesign(sd2.getExperimentalDesign());
+    if (sd2.getLocationDbId() != null)
+        sd1.setLocationDbId(sd2.getLocationDbId());
+    if (sd2.getStudyCode() != null)
+        sd1.setStudyCode(sd2.getStudyCode());
+    if (sd2.getTrialDbId() != null)
+        sd1.setTrialDbId(sd2.getTrialDbId());
+    if (sd2.getTrialName() != null)
+        sd1.setTrialName(sd2.getTrialName());
     if (sd2.getStudyDbId() != null)
       sd1.setStudyDbId(sd2.getStudyDbId());
     if (sd2.getStudyName() != null)
@@ -39,6 +65,45 @@ public class BrapiStudyDetails {
       sd1.setObservations(sd2.getObservations());
   }
 
+  public String getSeasons() {
+    return seasons;
+  }
+
+  public void setSeasons(String seasons) {
+    this.seasons = seasons;
+  }
+
+  public String getStudyType() {
+    return studyType;
+  }
+
+  public void setStudyType(String studyType) {
+    this.studyType = studyType;
+  }
+
+  public String getExperimentalDesign() {
+    return experimentalDesign;
+  }
+
+  public void setExperimentalDesign(String experimentalDesign) {
+    this.experimentalDesign = experimentalDesign;
+  }
+
+  public String getLocationDbId() {
+    return locationDbId;
+  }
+
+  public void setLocationDbId(String locationDbId) {
+    this.locationDbId = locationDbId;
+  }
+
+  public String getStudyCode() {
+    return studyCode;
+  }
+
+  public void setStudyCode(String studyCode) {
+    this.studyCode = studyCode;
+  }
   public String getCommonCropName() {
     return commonCropName;
   }
@@ -115,4 +180,28 @@ public class BrapiStudyDetails {
 
   public void setObservations(List<Observation> observations) { this.observations = observations; }
 
+  public String getLocationName() {
+    return locationName;
+  }
+
+  public void setLocationName(String locationName) {
+    this.locationName = locationName;
+  }
+
+
+  public String getTrialDbId() {
+    return trialDbId;
+  }
+
+  public void setTrialDbId(String trialDbId) {
+    this.trialDbId = trialDbId;
+  }
+
+  public String getTrialName() {
+    return trialName;
+  }
+
+  public void setTrialName(String trialName) {
+    this.trialName = trialName;
+  }
 }

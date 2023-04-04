@@ -226,6 +226,19 @@ class StudyDao {
                         put("study_source", e.exp_source)
                         put("count", e.count)
                         put("observation_levels", e.observation_level)
+
+                        put("location_name", e.location_name)
+                        put("seasons", e.seasons)
+                        put("study_type", e.studyType)
+                        put("study_description", e.studyDescription)
+                        put("experimental_design", e.experimentalDesign)
+                        put("location_db_id", e.locationDbId)
+                        put("study_code", e.studyCode)
+                        put("study_description", e.studyDescription)
+                        put("study_type", e.studyType)
+                        put("trial_db_id", e.trialDbId)
+                        put("trial_name", e.trialName)
+
                     }).toInt()
 
                     try {

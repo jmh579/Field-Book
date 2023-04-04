@@ -20,6 +20,16 @@ public class FieldObject {
     private String exp_source;
     private String observation_level;
 
+    private String location_name;
+
+    private String seasons;
+    private String studyType;
+    private String studyDescription;
+    private String experimentalDesign;
+    private String locationDbId;
+    private String studyCode;
+    private String trialDbId;
+    private String trialName;
     public FieldObject() {
     }
 
@@ -141,5 +151,77 @@ public class FieldObject {
 
     public void setObservation_level(String observation_level) {
         this.observation_level = observation_level;
+    }
+
+    public String getLocation_name() {
+        return location_name;
+    }
+
+    public void setLocation_name(String location_name) {
+        this.location_name = location_name;
+    }
+
+    public String getSeasons() {
+        return seasons;
+    }
+
+    public void setSeasons(String seasons) {
+        this.seasons = seasons;
+    }
+
+    public String getStudyType() {
+        return studyType;
+    }
+
+    public void setStudyType(String studyType) {
+        this.studyType = studyType;
+    }
+
+    public String getStudyDescription() {
+        return studyDescription;
+    }
+
+    public void setStudyDescription(String studyDescription) {
+        this.studyDescription = studyDescription;
+    }
+
+    public String getExperimentalDesign() {
+        return experimentalDesign;
+    }
+
+    public void setExperimentalDesign(String experimentalDesign) {
+        this.experimentalDesign = experimentalDesign;
+    }
+
+    public String getLocationDbId() {
+        return locationDbId;
+    }
+
+    public void setLocationDbId(String locationDbId) {
+        this.locationDbId = locationDbId;
+    }
+
+    public String getStudyCode() {
+        return studyCode;
+    }
+
+    public void setStudyCode(String studyCode) {
+        this.studyCode = studyCode;
+    }
+
+    public String getTrialDbId() {
+        return trialDbId;
+    }
+
+    public void setTrialDbId(String trialDbId) {
+        this.trialDbId = trialDbId;
+    }
+
+    public String getTrialName() {
+        return trialName;
+    }
+
+    public void setTrialName(String trialName) {
+        this.trialName = trialName;
     }
 }

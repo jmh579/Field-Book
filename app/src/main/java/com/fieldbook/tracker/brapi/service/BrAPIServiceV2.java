@@ -22,6 +22,7 @@ import com.fieldbook.tracker.objects.TraitObject;
 import com.fieldbook.tracker.preferences.GeneralKeys;
 import com.fieldbook.tracker.utilities.CategoryJsonUtil;
 import com.fieldbook.tracker.utilities.FailureFunction;
+import com.fieldbook.tracker.utilities.ObservationUnitAttributeHelper;
 import com.fieldbook.tracker.utilities.SuccessFunction;
 
 import org.brapi.client.v2.BrAPIClient;
@@ -49,6 +50,7 @@ import org.brapi.v2.model.core.response.BrAPIProgramListResponse;
 import org.brapi.v2.model.core.response.BrAPIStudyListResponse;
 import org.brapi.v2.model.core.response.BrAPIStudySingleResponse;
 import org.brapi.v2.model.core.response.BrAPITrialListResponse;
+import org.brapi.v2.model.pheno.BrAPIEntryTypeEnum;
 import org.brapi.v2.model.pheno.BrAPIImage;
 import org.brapi.v2.model.pheno.BrAPIObservation;
 import org.brapi.v2.model.pheno.BrAPIObservationUnit;
@@ -75,6 +77,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.StringJoiner;
 import java.util.function.BiFunction;
 
 public class BrAPIServiceV2 extends AbstractBrAPIService implements BrAPIService {
@@ -441,6 +444,31 @@ public class BrAPIServiceV2 extends AbstractBrAPIService implements BrAPIService
         studyDetails.setCommonCropName(study.getCommonCropName());
         studyDetails.setStudyDescription(study.getStudyDescription());
         studyDetails.setStudyLocation(study.getLocationName());
+
+        studyDetails.setLocationName(study.getLocationName());
+        studyDetails.setLocationDbId(study.getLocationDbId());
+
+        List<String> seasons = study.getSeasons();
+        if (study.getSeasons() != null) {
+            StringJoiner sj = new StringJoiner("/");
+            for (String season : seasons) {
+                sj.add(season);
+            }
+            studyDetails.setSeasons(sj.toString());
+        }
+
+        studyDetails.setStudyType(study.getStudyType());
+        studyDetails.setStudyDescription(study.getStudyDescription());
+
+        //TODO exp design is nested field that has PUI as well, for now just save the description
+        if (study.getExperimentalDesign() != null) {
+            studyDetails.setExperimentalDesign(study.getExperimentalDesign().getDescription());
+        }
+
+        studyDetails.setStudyCode(study.getStudyCode());
+        studyDetails.setTrialDbId(study.getTrialDbId());
+        studyDetails.setTrialName(study.getTrialName());
+
         return studyDetails;
     }
 
@@ -518,6 +546,12 @@ public class BrAPIServiceV2 extends AbstractBrAPIService implements BrAPIService
 
             BrAPIObservationUnitPosition pos = unit.getObservationUnitPosition();
             if (pos != null) {
+
+                BrAPIEntryTypeEnum entryType = pos.getEntryType();
+                if (entryType != null) {
+                    attributesMap.put("entryType", entryType.getBrapiValue());
+                }
+
                 List<BrAPIObservationUnitLevelRelationship> levels = pos.getObservationLevelRelationships();
                 levels.add(pos.getObservationLevel());
                 for(BrAPIObservationUnitLevelRelationship level: levels){
@@ -554,6 +588,8 @@ public class BrAPIServiceV2 extends AbstractBrAPIService implements BrAPIService
                 attributesMap.put("ObservationUnitDbId", unit.getObservationUnitDbId());
             if (unit.getObservationUnitName() != null)
                 attributesMap.put("ObservationUnitName", unit.getObservationUnitName());
+
+            ObservationUnitAttributeHelper.parseAdditionalInfo(unit, attributesMap);
 
             List<String> dataRow = new ArrayList<>();
             if(attributes.isEmpty()){
@@ -1139,6 +1175,16 @@ public class BrAPIServiceV2 extends AbstractBrAPIService implements BrAPIService
             field.setExp_species(studyDetails.getCommonCropName());
             field.setCount(studyDetails.getNumberOfPlots().toString());
             field.setObservation_level(observationLevel);
+
+            field.setLocation_name(studyDetails.getLocationName());
+            field.setSeasons(studyDetails.getSeasons());
+            field.setStudyType(studyDetails.getStudyType());
+            field.setStudyDescription(studyDetails.getStudyDescription());
+            field.setExperimentalDesign(studyDetails.getExperimentalDesign());
+            field.setLocationDbId(studyDetails.getLocationDbId());
+            field.setStudyCode(studyDetails.getStudyCode());
+            field.setTrialDbId(studyDetails.getTrialDbId());
+            field.setTrialName(studyDetails.getTrialName());
 
             // Get our host url
             if (BrAPIService.getHostUrl(context) != null) {
