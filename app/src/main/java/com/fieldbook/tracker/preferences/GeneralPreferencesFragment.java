@@ -64,6 +64,20 @@ public class GeneralPreferencesFragment extends PreferenceFragmentCompat impleme
 
         }
 
+        Preference moveToUniqueIdPref = this.findPreference(GeneralKeys.MOVE_TO_UNIQUE_ID);
+
+        if (moveToUniqueIdPref != null) {
+
+            //set preference change listener to change summary when needed
+            moveToUniqueIdPref.setOnPreferenceChangeListener(this);
+
+            //also initialize the summary whenever the fragment is opened, or else it defaults to "disabled"
+            String moveMode = prefMgr.getSharedPreferences().getString(GeneralKeys.MOVE_TO_UNIQUE_ID, "1");
+
+            switchMovePreferenceMode(moveMode, moveToUniqueIdPref);
+
+        }
+
         updateLocationCollectionPreference();
     }
 
@@ -103,6 +117,36 @@ public class GeneralPreferencesFragment extends PreferenceFragmentCompat impleme
         }
     }
 
+    private void switchMovePreferenceMode(String mode, Preference preference) {
+
+        switch (mode) {
+
+            case "2": {
+
+                preference.setSummary(R.string.move_to_unique_id_text_or_scan_description);
+
+                break;
+
+            }
+
+            case "3": {
+
+                preference.setSummary(R.string.move_to_unique_id_direct_camera_scan_description);
+
+                break;
+
+            }
+
+            default: {
+
+                preference.setSummary(R.string.preferences_general_feature_barcode_text_description);
+
+                break;
+
+            }
+        }
+    }
+
     @Override
     public void onAttach(Context context) {
         super.onAttach(context);
@@ -121,6 +165,10 @@ public class GeneralPreferencesFragment extends PreferenceFragmentCompat impleme
             if (preference.getKey().equals(GeneralKeys.HIDE_ENTRIES_WITH_DATA_TOOLBAR)) {
 
                 switchSkipPreferenceMode((String) newValue, preference);
+
+            } else if (preference.getKey().equals(GeneralKeys.MOVE_TO_UNIQUE_ID)) {
+
+                switchMovePreferenceMode((String) newValue, preference);
 
             }
         }
@@ -209,7 +257,11 @@ public class GeneralPreferencesFragment extends PreferenceFragmentCompat impleme
 
             if (root != null && root.exists()) {
 
-                String path = BaseDocumentTreeUtil.Companion.getStem(root.getUri(), context);
+                String path = root.getUri().getLastPathSegment();
+                if (path == null) {
+                    // default to directory name if path is null
+                    path = BaseDocumentTreeUtil.Companion.getStem(root.getUri(), context);
+                }
 
                 defaultStorageLocation.setSummary(path);
 

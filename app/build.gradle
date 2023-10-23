@@ -6,6 +6,24 @@ apply plugin: 'com.google.firebase.crashlytics'
 apply plugin: 'androidx.navigation.safeargs'
 apply plugin: 'com.google.dagger.hilt.android'
 
+Properties props = new Properties()
+props.load(new FileInputStream("$project.rootDir/version.properties"))
+props.each { prop ->
+    project.ext.set(prop.key, prop.value)
+}
+
+private Integer makeVersionCode() {
+    int major = ext.majorVersion as Integer
+    int minor = ext.minorVersion as Integer
+    int patch = ext.patchVersion as Integer
+
+    return major * 10000 + minor * 100 + patch
+}
+
+private String makeVersionName() {
+    return "${ext.majorVersion}.${ext.minorVersion}.${ext.patchVersion}"
+}
+
 android {
     signingConfigs {
         playStoreConfig {
@@ -19,16 +37,30 @@ android {
                 storeFile file('keystore.keystore')
             } else println("Non-keystore build.")
         }
+        gitActionConfig {
+            def tmpFilePath = System.getProperty("user.home") + "/work/_temp/keystore/"
+            def allFilesFromDir = new File(tmpFilePath).listFiles()
+
+            if (allFilesFromDir != null) {
+                def keystoreFile = allFilesFromDir.first()
+                keystoreFile.renameTo("keystore/your_keystore.jks")
+            }
+
+            storeFile = file("keystore/your_keystore.jks")
+            storePassword System.getenv("SIGNING_STORE_PASSWORD")
+            keyAlias System.getenv("SIGNING_KEY_ALIAS")
+            keyPassword System.getenv("SIGNING_KEY_PASSWORD")
+        }
     }
 
-    compileSdkVersion 31
+    compileSdkVersion 33
 
     defaultConfig {
         applicationId "com.fieldbook.tracker"
         minSdkVersion 21
-        targetSdkVersion 31
-        versionCode = 540
-        versionName = '5.4.0'
+        targetSdkVersion 33
+        versionCode = makeVersionCode()
+        versionName = makeVersionName()
         multiDexEnabled true
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -37,15 +69,15 @@ android {
 
         release {
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
-            signingConfig signingConfigs.playStoreConfig //Add your own signing config
+            debuggable false
+            //signingConfig signingConfigs.playStoreConfig //Add your own signing config
         }
 
         debug {
             clean
             debuggable true
             manifestPlaceholders = [crashlyticsCollectionEnabled: "false"]
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            //proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
@@ -91,7 +123,7 @@ dependencies {
     //zebra dependency
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.11.0'
 
-    implementation 'androidx.appcompat:appcompat:1.6.0-alpha04'
+    implementation 'androidx.appcompat:appcompat:1.7.0-alpha02'
     implementation 'androidx.legacy:legacy-support-v4:1.0.0'
     implementation 'androidx.recyclerview:recyclerview:1.2.1'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.1'
@@ -99,7 +131,7 @@ dependencies {
     implementation "androidx.legacy:legacy-preference-v14:1.0.0"
     implementation "androidx.preference:preference:1.1.1"
     implementation 'androidx.multidex:multidex:2.0.1'
-    implementation "androidx.core:core-ktx:1.6.0"
+    implementation "androidx.core:core-ktx:1.10.1"
     implementation 'com.android.support.constraint:constraint-layout:2.0.4'
     implementation 'com.android.volley:volley:1.2.1'
     implementation 'com.google.android.material:material:1.4.0'
@@ -109,18 +141,21 @@ dependencies {
 
     implementation 'com.google.zxing:core:3.3.3'
 
+    implementation('com.github.phenoapps:phenolib:v0.9.49')
 
-    implementation('com.github.phenoapps:phenolib:v0.9.39')
-
-    //necessary when building phenolib locally
-    //implementation "com.squareup.okhttp:okhttp:2.7.5"
+    implementation 'com.google.android.exoplayer:exoplayer:2.17.0'
+    implementation 'com.arthenica:ffmpeg-kit-min:5.1.LTS'
+    implementation 'com.squareup.okhttp3:okhttp:4.11.0'
 
     //uvc camera java native libs
     implementation("com.serenegiant:common:2.12.4")
 
+    //brapi and required dependencies
     implementation 'com.github.breeding-insight:brapi:2.0.3'
-    implementation("com.squareup.okhttp3:okhttp:4.9.3")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.9.3")
+    //necessary when building phenolib locally
+    implementation "com.squareup.okhttp:okhttp:2.7.5"
+    implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
+    implementation("io.gsonfire:gson-fire:1.8.4") //required v1
 
     implementation 'org.jsoup:jsoup:1.8.1'
     implementation 'net.sourceforge.jexcelapi:jxl:2.6.10'
@@ -137,7 +172,7 @@ dependencies {
     implementation "com.github.skydoves:colorpickerpreference:2.0.4"
     implementation 'com.github.evrencoskun:TableView:v0.8.9.4'
 
-    implementation 'net.openid:appauth:0.9.0'
+    implementation 'net.openid:appauth:0.11.1'
     implementation 'com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava' //google messed up some packages, this package is temporary until the issue is fixed (Feb 2021)
 
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.5.0"

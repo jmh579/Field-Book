@@ -78,13 +78,13 @@ public class NewTraitDialog extends DialogFragment implements CategoryAdapter.Ca
     private SharedPreferences ep;
     private boolean brapiDialogShown;
 
-    private TraitAdapter mAdapter;
+    private TraitAdapter traitAdapter;
 
     public NewTraitDialog(View layout, TraitEditorActivity activity) {
         // fields
         originActivity = activity;
 
-        mAdapter = activity.getAdapter();
+        traitAdapter = activity.getAdapter();
         traitFormats = new TraitFormatCollection();
         oldTrait = null;
         ep = activity.getPreferences();
@@ -140,35 +140,38 @@ public class NewTraitDialog extends DialogFragment implements CategoryAdapter.Ca
         format.setOnItemSelectedListener(createFormatSelectionListener());
 
         ArrayAdapter<String> itemsAdapter = new ArrayAdapter<>(
-                TraitEditorActivity.thisActivity,
+                activity,
                 R.layout.custom_spinner_layout,
                 traitFormats.getLocalStringList());
         format.setAdapter(itemsAdapter);
 
-        categoriesRv.setLayoutManager(new LinearLayoutManager(TraitEditorActivity.thisActivity));
+        categoriesRv.setLayoutManager(new LinearLayoutManager(activity));
         catList = new ArrayList<>();
         CategoryAdapter catAdapter = new CategoryAdapter(this);
         categoriesRv.setAdapter(catAdapter);
 
         addCategoryButton.setOnClickListener((v) -> {
             String value = categoryValueEt.getText().toString();
-            if (!value.isEmpty()) {
-
-                ArrayList<String> values = new ArrayList<>();
-                for (BrAPIScaleValidValuesCategories s : catList) {
-                    values.add(s.getValue());
-                }
-
-                if (!values.contains(value)) {
-                    BrAPIScaleValidValuesCategories scale = new BrAPIScaleValidValuesCategories();
-                    scale.setLabel(value);
-                    scale.setValue(value);
-                    catList.add(scale);
-                    categoryValueEt.setText("");
-                    updateCatAdapter();
-                }
-            }
+            addCategory(value);
+            categoryValueEt.setText("");
         });
+    }
+
+    private void addCategory(String value) {
+        if (!value.isEmpty()) {
+            ArrayList<String> values = new ArrayList<>();
+            for (BrAPIScaleValidValuesCategories s : catList) {
+                values.add(s.getValue());
+            }
+
+            if (!values.contains(value)) {
+                BrAPIScaleValidValuesCategories scale = new BrAPIScaleValidValuesCategories();
+                scale.setLabel(value);
+                scale.setValue(value);
+                catList.add(scale);
+                updateCatAdapter();
+            }
+        }
     }
 
     private void updateCatAdapter() {
@@ -293,7 +296,7 @@ public class NewTraitDialog extends DialogFragment implements CategoryAdapter.Ca
         // Display our BrAPI dialog if it has not been show already
         // Get our dialog state from our adapter to see if a trait has been selected
         // brapiDialogShown = mAdapter.infoDialogShown;
-        setBrAPIDialogShown(mAdapter.infoDialogShown);
+        setBrAPIDialogShown(traitAdapter.getInfoDialogShown());
         if (!brapiDialogShown) {
             setBrAPIDialogShown(((TraitAdapterController) originActivity)
                             .displayBrapiInfo(originActivity, null, true));
@@ -368,7 +371,11 @@ public class NewTraitDialog extends DialogFragment implements CategoryAdapter.Ca
         t.setMinimum(minimum.getText().toString());
         t.setMaximum(maximum.getText().toString());
         t.setDetails(details.getText().toString());
-        //t.setCategories(categoryLabelEt.getText().toString());
+        String finalCat = categoryValueEt.getText().toString();
+        if (!finalCat.isEmpty()) {
+            addCategory(finalCat);
+            categoryValueEt.setText("");
+        }
 
         try {
 
@@ -416,7 +423,7 @@ public class NewTraitDialog extends DialogFragment implements CategoryAdapter.Ca
 
         try {
 
-            ArrayList<BrAPIScaleValidValuesCategories> json = CategoryJsonUtil.Companion.decode(traitObject.getCategories());
+            ArrayList<BrAPIScaleValidValuesCategories> json = CategoryJsonUtil.Companion.decodeCategories(traitObject.getCategories());
 
             if (!json.isEmpty()) {
 
@@ -1015,6 +1022,22 @@ public class NewTraitDialog extends DialogFragment implements CategoryAdapter.Ca
         }
     }
 
+    private class TraitGoProFormat extends TraitFormatNotValue {
+
+        @Override
+        public ParameterObject detailsBox() {
+            return new ParameterObject(true, false, null, optionalHint);
+        }
+
+        public String getEnglishString() {
+            return "GoPro";
+        }
+
+        public int getResourceId() {
+            return R.string.traits_format_go_pro_camera;
+        }
+    }
+
     private class TraitFormatPhoto extends TraitFormatNotValue {
 
         @Override
@@ -1164,6 +1187,7 @@ public class NewTraitDialog extends DialogFragment implements CategoryAdapter.Ca
             traitFormatList.add(new TraitFormatZebraLablePrint());
             traitFormatList.add(new TraitFormatGnss());
             traitFormatList.add(new TraitUsbCameraFormat());
+            traitFormatList.add(new TraitGoProFormat());
         }
 
         public int size() {

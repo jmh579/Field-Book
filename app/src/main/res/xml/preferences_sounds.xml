@@ -23,6 +23,13 @@
         android:title="@string/preferences_sound_cycle_traits_title"
         android:summary="@string/preferences_sound_cycle_traits_description" />
 
+    <CheckBoxPreference
+        android:defaultValue="false"
+        android:icon="@drawable/ic_tb_delete"
+        android:key="DELETE_OBSERVATION_SOUND"
+        android:title="@string/preferences_sound_delete_obs_title"
+        android:summary="@string/preferences_sound_delete_obs_description" />
+
     <PreferenceCategory android:title="@string/preferences_category_audio_tts_title"
         app:iconSpaceReserved="false">
 
@@ -36,7 +43,7 @@
         <Preference
             app:fragment="com.fieldbook.tracker.preferences.TtsLanguagePreferenceFragment"
             app:isPreferenceVisible="false"
-            android:icon="@drawable/ic_pref_general_root_directory"
+            android:icon="@drawable/ic_nav_drawer_translate"
             android:key="TTS_LANGUAGE"
             android:summary="@string/preferences_general_tts_language_description"
             android:title="@string/preferences_general_tts_language_title" />

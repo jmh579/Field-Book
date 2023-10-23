@@ -7,6 +7,7 @@ import android.os.Handler
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.AttributeSet
+import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -197,7 +198,6 @@ class RangeBoxView : ConstraintLayout {
 
         controller.getTraitBox().setNewTraits(getPlotID())
 
-        controller.initWidgets(true)
     }
 
     private fun truncate(s: String, maxLen: Int): String? {
@@ -384,12 +384,14 @@ class RangeBoxView : ConstraintLayout {
             if (controller.getPreferences().getBoolean(GeneralKeys.PRIMARY_SOUND, false)) {
                 if (cRange.range != lastRange && lastRange != "") {
                     lastRange = cRange.range
-                    controller.playSound("plonk")
+                    controller.getSoundHelper().playPlonk()
                 }
             }
             display()
             controller.getTraitBox().setNewTraits(getPlotID())
             controller.initWidgets(true)
+
+            Log.d("Field Book", "refresh widgets range box repeate key press")
         }
     }
 
@@ -412,6 +414,11 @@ class RangeBoxView : ConstraintLayout {
     }
 
     fun reload() {
+
+        firstName = controller.getPreferences().getString(GeneralKeys.PRIMARY_NAME, "") ?: ""
+        secondName = controller.getPreferences().getString(GeneralKeys.SECONDARY_NAME, "") ?: ""
+        uniqueName = controller.getPreferences().getString(GeneralKeys.UNIQUE_NAME, "") ?: ""
+
         switchVisibility(controller.getPreferences().getBoolean(GeneralKeys.QUICK_GOTO, false))
         setName(8)
         paging = 1
@@ -434,7 +441,7 @@ class RangeBoxView : ConstraintLayout {
         if (controller.getPreferences().getBoolean(GeneralKeys.PRIMARY_SOUND, false)) {
             if (cRange.range != lastRange && lastRange != "") {
                 lastRange = cRange.range
-                controller.playSound("plonk")
+                controller.getSoundHelper().playPlonk()
             }
         }
     }
@@ -526,14 +533,13 @@ class RangeBoxView : ConstraintLayout {
             return
         }
         if (controller.getPreferences().getBoolean(GeneralKeys.ENTRY_NAVIGATION_SOUND, false)
-            && !controller.getTraitBox().existsTrait()
         ) {
-            controller.playSound("advance")
+            controller.getSoundHelper().playAdvance()
         }
         val entryArrow =
             controller.getPreferences().getString(GeneralKeys.DISABLE_ENTRY_ARROW_NO_DATA, "0")
         if ((entryArrow == "1" || entryArrow == "3") && !controller.getTraitBox().existsTrait()) {
-            controller.playSound("error")
+            controller.getSoundHelper().playError()
         } else {
             if (rangeID.isNotEmpty()) {
                 //index.setEnabled(true);
@@ -542,29 +548,35 @@ class RangeBoxView : ConstraintLayout {
             }
         }
         controller.resetGeoNavMessages()
+        controller.getCollectInputView().resetInitialIndex()
     }
 
     fun moveEntryRight() {
+        val traitBox = controller.getTraitBox()
         if (!controller.validateData()) {
             return
         }
         if (controller.getPreferences().getBoolean(GeneralKeys.ENTRY_NAVIGATION_SOUND, false)
-            && !controller.getTraitBox().existsTrait()
         ) {
-            controller.playSound("advance")
+            controller.getSoundHelper().playAdvance()
         }
         val entryArrow =
             controller.getPreferences().getString(GeneralKeys.DISABLE_ENTRY_ARROW_NO_DATA, "0")
-        if ((entryArrow == "2" || entryArrow == "3") && !controller.getTraitBox().existsTrait()) {
-            controller.playSound("error")
+        if ((entryArrow == "2" || entryArrow == "3") && !traitBox.existsTrait()) {
+            controller.getSoundHelper().playError()
         } else {
             if (rangeID.isNotEmpty()) {
                 //index.setEnabled(true);
+                // In addtion to advancing the entry, return to the first trait in the trait order if the preference is enabled
+                if (controller.isReturnFirstTrait()) {
+                    traitBox.returnFirst()
+                }
                 paging = incrementPaging(paging)
                 controller.refreshMain()
             }
         }
         controller.resetGeoNavMessages()
+        controller.getCollectInputView().resetInitialIndex()
     }
 
     private fun decrementPaging(pos: Int): Int {
@@ -642,10 +654,6 @@ class RangeBoxView : ConstraintLayout {
             //if we wrap around the entire range then observations are completed
             //notify the user and just go to the first range id.
             if (!firstLoop && prevPos == localPrev) {
-                Toast.makeText(
-                    context,
-                    R.string.activity_collect_all_obs_made, Toast.LENGTH_SHORT
-                ).show()
                 return 1
             }
             firstLoop = false

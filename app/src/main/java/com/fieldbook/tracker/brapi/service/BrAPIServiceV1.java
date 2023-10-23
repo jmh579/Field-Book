@@ -124,7 +124,7 @@ public class BrAPIServiceV1 extends AbstractBrAPIService implements BrAPIService
         };
 
         try {
-            observationsApi.observationlevelsGetAsync(0, 1000, getBrapiToken(), callBack);
+            observationsApi.observationLevelsGetAsync(0, 1000, callBack);
         } catch (ApiException e) {
             Log.e("BrAPIServiceV1", "Error sending BrAPI Request to fetch observation levels", e);
         }
@@ -441,9 +441,26 @@ public class BrAPIServiceV1 extends AbstractBrAPIService implements BrAPIService
                                final Function<BrapiStudyDetails, Void> function,
                                final Function<Integer, Void> failFunction) {
         try {
+
+            //level is not a required field, so passing null here is fine
+            //otherwise this was causing a NPE when observationLevel was null
+            //check if observationLevel is null
+            @Nullable
+            String levelName = null;
+            if (observationLevel != null) {
+
+                if (observationLevel.getObservationLevelName() != null) {
+
+                    levelName = observationLevel.getObservationLevelName();
+
+                }
+            }
+
+            final String level = levelName;
+
             final AtomicInteger currentPage = new AtomicInteger(0);
             final Integer pageSize = Integer.parseInt(context.getSharedPreferences(GeneralKeys.SHARED_PREF_FILE_NAME, 0)
-                    .getString(GeneralKeys.BRAPI_PAGE_SIZE, "1000"));
+                    .getString(GeneralKeys.BRAPI_PAGE_SIZE, "50"));
             final BrapiStudyDetails study = new BrapiStudyDetails();
             study.setValues(new ArrayList<>());
 
@@ -481,13 +498,6 @@ public class BrAPIServiceV1 extends AbstractBrAPIService implements BrAPIService
                         }else {
                             try {
 
-                                //level is not a required field, so passing null here is fine
-                                //otherwise this was causing a NPE when observationLevel was null
-                                @Nullable String level = null;
-                                if (observationLevel != null) {
-                                    level = observationLevel.getObservationLevelName();
-                                }
-
                                 studiesApi.studiesStudyDbIdObservationunitsGetAsync(
                                         studyDbId, level, currentPage.get(), pageSize,
                                         getBrapiToken(), this);
@@ -508,7 +518,7 @@ public class BrAPIServiceV1 extends AbstractBrAPIService implements BrAPIService
             };
 
             studiesApi.studiesStudyDbIdObservationunitsGetAsync(
-                    studyDbId, observationLevel.getObservationLevelName(), 0, pageSize,
+                    studyDbId, level, 0, pageSize,
                     getBrapiToken(), callback);
 
         } catch (ApiException e) {
@@ -1006,6 +1016,7 @@ public class BrAPIServiceV1 extends AbstractBrAPIService implements BrAPIService
                     c.setValue(value);
                     c.setLabel(value);
                 }
+                scale.add(c);
             }
             return CategoryJsonUtil.Companion.encode(scale);
         } catch (Exception e) {

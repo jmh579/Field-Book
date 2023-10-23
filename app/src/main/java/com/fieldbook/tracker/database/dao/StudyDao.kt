@@ -5,9 +5,17 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
 import android.util.Log
 import androidx.core.content.contentValuesOf
-import com.fieldbook.tracker.database.*
-import com.fieldbook.tracker.database.Migrator.*
 import com.fieldbook.tracker.database.Migrator.Companion.sObservationUnitPropertyViewName
+import com.fieldbook.tracker.database.Migrator.Observation
+import com.fieldbook.tracker.database.Migrator.ObservationUnit
+import com.fieldbook.tracker.database.Migrator.ObservationUnitAttribute
+import com.fieldbook.tracker.database.Migrator.ObservationUnitValue
+import com.fieldbook.tracker.database.Migrator.Study
+import com.fieldbook.tracker.database.getTime
+import com.fieldbook.tracker.database.query
+import com.fieldbook.tracker.database.toFirst
+import com.fieldbook.tracker.database.toTable
+import com.fieldbook.tracker.database.withDatabase
 import com.fieldbook.tracker.objects.FieldObject
 
 
@@ -43,7 +51,7 @@ class StudyDao {
          */
         fun switchField(exp_id: Int) = withDatabase { db ->
 
-            val headers = ObservationUnitAttributeDao.getAllNames(exp_id)
+            val headers = ObservationUnitAttributeDao.getAllNames(exp_id).filter { it != "geo_coordinates" }
 
             fixPlotAttributes(db)
 
@@ -65,7 +73,7 @@ class StudyDao {
              */
             val query = """
             CREATE TABLE IF NOT EXISTS $sObservationUnitPropertyViewName AS 
-            SELECT units.${ObservationUnit.PK} AS id $selectStatement
+            SELECT units.${ObservationUnit.PK} AS id, units.`geo_coordinates` as "geo_coordinates" $selectStatement
             FROM ${ObservationUnit.tableName} AS units
             LEFT JOIN ${ObservationUnitValue.tableName} AS vals ON units.${ObservationUnit.PK} = vals.${ObservationUnit.FK}
             LEFT JOIN ${ObservationUnitAttribute.tableName} AS attr on vals.${ObservationUnitAttribute.FK} = attr.${ObservationUnitAttribute.PK}
@@ -184,9 +192,11 @@ class StudyDao {
             db.query(Study.tableName,
                     select = arrayOf(Study.PK,
                             "study_name",
+                            "study_alias",
                             "study_unique_id_name",
                             "study_primary_id_name",
                             "study_secondary_id_name",
+                            "observation_levels",
                             "date_import",
                             "date_edit",
                             "date_export",

@@ -12,6 +12,8 @@ import android.graphics.SurfaceTexture
 import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.util.Log
 import android.view.View
@@ -60,6 +62,9 @@ class UsbCameraTraitLayout : BaseTraitLayout, ImageAdapter.ImageItemHandler {
     private var recyclerView: RecyclerView? = null
     private var previewGroup: Group? = null
     private var constraintLayout: ConstraintLayout? = null
+    //zoom buttons
+    private var zoomInButton: ImageButton? = null
+    private var zoomOutButton: ImageButton? = null
 
     constructor(context: Context?) : super(context)
     constructor(context: Context?, attrs: AttributeSet?) : super(context, attrs)
@@ -69,20 +74,25 @@ class UsbCameraTraitLayout : BaseTraitLayout, ImageAdapter.ImageItemHandler {
         defStyleAttr
     )
 
+    override fun layoutId(): Int {
+        return R.layout.trait_usb_camera
+    }
+
     override fun setNaTraitsText() {}
     override fun type(): String {
         return type
     }
 
-    override fun init(act: Activity?) {
-        super.init(act)
+    override fun init(act: Activity) {
 
-        constraintLayout = findViewById(R.id.usb_camera_fragment_cv)
-        textureView = findViewById(R.id.usb_camera_fragment_tv)
-        connectBtn = findViewById(R.id.usb_camera_fragment_connect_btn)
-        captureBtn = findViewById(R.id.usb_camera_fragment_capture_btn)
-        recyclerView = findViewById(R.id.usb_camera_fragment_rv)
-        previewGroup = findViewById(R.id.usb_camera_fragment_preview_group)
+        constraintLayout = act.findViewById(R.id.usb_camera_fragment_cv)
+        textureView = act.findViewById(R.id.usb_camera_fragment_tv)
+        connectBtn = act.findViewById(R.id.usb_camera_fragment_connect_btn)
+        captureBtn = act.findViewById(R.id.usb_camera_fragment_capture_btn)
+        recyclerView = act.findViewById(R.id.usb_camera_fragment_rv)
+        previewGroup = act.findViewById(R.id.usb_camera_fragment_preview_group)
+        zoomInButton = act.findViewById(R.id.usb_camera_fragment_plus_btn)
+        zoomOutButton = act.findViewById(R.id.usb_camera_fragment_minus_btn)
 
         activity = act
 
@@ -111,7 +121,57 @@ class UsbCameraTraitLayout : BaseTraitLayout, ImageAdapter.ImageItemHandler {
             }
         }
 
+        textureView?.setOnClickListener {
+
+            mUsbCameraHelper?.setFocus()
+
+        }
+
+        zoomOutButton?.setOnClickListener {
+
+            try {
+
+                val current = mUsbCameraHelper?.getZoom() ?: 1
+
+                if (current < Int.MAX_VALUE) {
+
+                    mUsbCameraHelper?.setZoom(current)
+
+                }
+
+            } catch (e: Exception) {
+
+                e.printStackTrace()
+
+                Log.d(TAG, "Something went wrong with zooming USB Camera.")
+
+            }
+        }
+
+        zoomInButton?.setOnClickListener {
+
+            try {
+
+                val current = mUsbCameraHelper?.getZoom() ?: 1
+
+                if (current > 1) {
+
+                    mUsbCameraHelper?.setZoom(current - 1)
+
+                }
+
+            } catch (e: Exception) {
+
+                e.printStackTrace()
+
+                Log.d(TAG, "Something went wrong with zooming USB Camera.")
+
+            }
+        }
+
         registerReconnectListener()
+
+        connectBtn?.requestFocus()
     }
 
     private fun registerReconnectListener() {
@@ -300,10 +360,14 @@ class UsbCameraTraitLayout : BaseTraitLayout, ImageAdapter.ImageItemHandler {
         }
     }
 
-    override fun init() {}
     override fun loadLayout() {
 
-        loadAdapterItems()
+        //slight delay to make navigation a bit faster
+        Handler(Looper.getMainLooper()).postDelayed({
+
+            loadAdapterItems()
+
+        }, 500)
 
         super.loadLayout()
     }

@@ -3,11 +3,12 @@ package com.fieldbook.tracker.activities;
 
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
-import android.media.MediaPlayer;
+import android.location.Location;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -26,6 +27,7 @@ import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.LinearLayout.LayoutParams;
 import android.widget.ListView;
 import android.widget.Toast;
@@ -35,31 +37,44 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.widget.Toolbar;
 import androidx.documentfile.provider.DocumentFile;
 import androidx.preference.PreferenceManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.fieldbook.tracker.R;
 import com.fieldbook.tracker.adapters.InfoBarAdapter;
 import com.fieldbook.tracker.brapi.model.Observation;
 import com.fieldbook.tracker.database.DataHelper;
-import com.fieldbook.tracker.database.dao.ObservationUnitDao;
-import com.fieldbook.tracker.database.dao.StudyDao;
 import com.fieldbook.tracker.database.models.ObservationModel;
 import com.fieldbook.tracker.database.models.ObservationUnitModel;
+import com.fieldbook.tracker.dialogs.GeoNavCollectDialog;
+import com.fieldbook.tracker.interfaces.FieldSwitcher;
+import com.fieldbook.tracker.location.GPSTracker;
 import com.fieldbook.tracker.objects.FieldObject;
-import com.fieldbook.tracker.objects.GeoNavHelper;
+import com.fieldbook.tracker.objects.InfoBarModel;
 import com.fieldbook.tracker.objects.RangeObject;
 import com.fieldbook.tracker.objects.TraitObject;
-import com.fieldbook.tracker.objects.VerifyPersonHelper;
 import com.fieldbook.tracker.preferences.GeneralKeys;
 import com.fieldbook.tracker.traits.BaseTraitLayout;
 import com.fieldbook.tracker.traits.CategoricalTraitLayout;
+import com.fieldbook.tracker.traits.GNSSTraitLayout;
+import com.fieldbook.tracker.traits.GoProTraitLayout;
 import com.fieldbook.tracker.traits.LayoutCollections;
 import com.fieldbook.tracker.traits.PhotoTraitLayout;
 import com.fieldbook.tracker.utilities.CategoryJsonUtil;
+import com.fieldbook.tracker.utilities.FieldSwitchImpl;
+import com.fieldbook.tracker.utilities.GeoJsonUtil;
+import com.fieldbook.tracker.utilities.GeoNavHelper;
+import com.fieldbook.tracker.utilities.GnssThreadHelper;
+import com.fieldbook.tracker.utilities.GoProWrapper;
+import com.fieldbook.tracker.utilities.InfoBarHelper;
+import com.fieldbook.tracker.utilities.JsonUtil;
 import com.fieldbook.tracker.utilities.LocationCollectorUtil;
 import com.fieldbook.tracker.utilities.SnackbarUtils;
+import com.fieldbook.tracker.utilities.SoundHelperImpl;
 import com.fieldbook.tracker.utilities.TapTargetUtil;
 import com.fieldbook.tracker.utilities.Utils;
+import com.fieldbook.tracker.utilities.VerifyPersonHelper;
+import com.fieldbook.tracker.utilities.VibrateUtil;
 import com.fieldbook.tracker.views.CollectInputView;
 import com.fieldbook.tracker.views.RangeBoxView;
 import com.fieldbook.tracker.views.TraitBoxView;
@@ -69,6 +84,7 @@ import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
 
 import org.brapi.v2.model.pheno.BrAPIScaleValidValuesCategories;
+import org.phenoapps.interfaces.security.SecureBluetooth;
 import org.phenoapps.interfaces.usb.camera.UsbCameraInterface;
 import org.phenoapps.security.SecureBluetoothActivityImpl;
 import org.phenoapps.usb.camera.UsbCameraHelper;
@@ -83,7 +99,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
@@ -101,24 +119,48 @@ public class CollectActivity extends ThemedActivity
         implements UsbCameraInterface, SummaryFragment.SummaryOpenListener,
         com.fieldbook.tracker.interfaces.CollectController,
         com.fieldbook.tracker.interfaces.CollectRangeController,
-        com.fieldbook.tracker.interfaces.CollectTraitController {
+        com.fieldbook.tracker.interfaces.CollectTraitController,
+        InfoBarAdapter.InfoBarController,
+        GoProTraitLayout.GoProCollector,
+        GPSTracker.GPSTrackerListener {
 
     public static final int REQUEST_FILE_EXPLORER_CODE = 1;
     public static final int BARCODE_COLLECT_CODE = 99;
     public static final int BARCODE_SEARCH_CODE = 98;
 
+    private GeoNavHelper geoNavHelper;
+
+    @Inject
+    VibrateUtil vibrator;
+
+    @Inject
+    GnssThreadHelper gnssThreadHelper;
+
     @Inject
     DataHelper database;
 
     @Inject
-    GeoNavHelper geoNavHelper;
+    VerifyPersonHelper verifyPersonHelper;
+
+    //used to query for infobar prefix/value pairs and building InfoBarModels
+    @Inject
+    InfoBarHelper infoBarHelper;
 
     @Inject
-    VerifyPersonHelper verifyPersonHelper;
-    
+    FieldSwitchImpl fieldSwitcher;
+
+    @Inject
+    SoundHelperImpl soundHelper;
+
+    @Inject
+    GoProWrapper goProWrapper;
+
+    private GPSTracker gps;
+
     public static boolean searchReload;
     public static String searchRange;
     public static String searchPlot;
+    public static String searchUnique;
     public static boolean reloadData;
     public static boolean partialReload;
     public static String TAG = "Field Book";
@@ -136,6 +178,7 @@ public class CollectActivity extends ThemedActivity
     private String inputPlotId = "";
     private AlertDialog goToId;
     private final Object lock = new Object();
+
     /**
      * Main screen elements
      */
@@ -143,6 +186,8 @@ public class CollectActivity extends ThemedActivity
     private InfoBarAdapter infoBarAdapter;
     private TraitBoxView traitBox;
     private RangeBoxView rangeBox;
+    private RecyclerView infoBarRv;
+
     /**
      * Trait-related elements
      */
@@ -185,6 +230,12 @@ public class CollectActivity extends ThemedActivity
     private AlertDialog dialogMultiMeasureDelete;
     private AlertDialog dialogMultiMeasureConfirmDelete;
 
+    /**
+     * GeoNav dialog
+     */
+    private androidx.appcompat.app.AlertDialog dialogGeoNav;
+    private androidx.appcompat.app.AlertDialog dialogPrecisionLoss;
+
     public void triggerTts(String text) {
         if (ep.getBoolean(GeneralKeys.TTS_LANGUAGE_ENABLED, false)) {
             ttsHelper.speak(text);
@@ -193,6 +244,8 @@ public class CollectActivity extends ThemedActivity
 
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        gps = new GPSTracker(this, this, 0, 10000);
 
         guiThread.start();
         myGuiHandler = new Handler(guiThread.getLooper()) {
@@ -241,10 +294,110 @@ public class CollectActivity extends ThemedActivity
 
         mUsbCameraHelper = new UsbCameraHelper(this);
 
+        goProWrapper.attach();
+
         loadScreen();
 
+        checkForInitialBarcodeSearch();
+
+        verifyPersonHelper.checkLastOpened();
     }
 
+    private void switchField(int studyId, @Nullable String obsUnitId) {
+
+        try {
+
+            fieldSwitcher.switchField(studyId);
+
+            rangeBox.setAllRangeID();
+            int[] rangeID = rangeBox.getRangeID();
+
+            //refresh collect activity UI
+            rangeBox.reload();
+            rangeBox.refresh();
+            initWidgets(false);
+
+            if (obsUnitId != null) {
+
+                reloadData = false;
+
+                //navigate to the plot
+                moveToSearch("id", rangeID, null, null, obsUnitId, -1);
+            }
+
+            soundHelper.playCelebrate();
+
+        } catch (Exception e) {
+
+            Log.d(TAG,"Error during switch field");
+
+            e.printStackTrace();
+
+        }
+    }
+
+    /**
+     * Checks if the user has clicked the barcode button on ConfigActivity,
+     * this will search for obs unit and load neccessary field file
+     */
+    private void checkForInitialBarcodeSearch() {
+
+        try {
+
+            Intent i = getIntent();
+            if (i != null) {
+
+                //get barcode to search for which will be an obs. unit id
+                String barcode = i.getStringExtra("barcode");
+
+                if (barcode != null) {
+
+                    Log.d(TAG, "Searching initial barcode: " + barcode);
+
+                    ObservationUnitModel model = database.getObservationUnitById(barcode);
+
+                    if (model != null) {
+
+                        try {
+
+                            //if barcode matches an obs. unit id
+                            if (model.getObservation_unit_db_id().equals(barcode)) {
+
+                                inputPlotId = barcode;
+
+                                FieldObject fo = database.getFieldObject(model.getStudy_id());
+
+                                if (fo != null && fo.getExp_name() != null) {
+
+                                    switchField(model.getStudy_id(), barcode);
+
+                                }
+                            }
+
+                        } catch (Exception e) {
+
+                            Log.d(TAG, "Failed while searching for: " + barcode);
+
+                            e.printStackTrace();
+                        }
+
+                    } else {
+
+                        Toast.makeText(this, getString(R.string.act_collect_plot_with_code_not_found), Toast.LENGTH_LONG).show();
+
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+
+            Log.d(TAG, "Something failed while searching. ");
+
+            e.printStackTrace();
+        }
+    }
+
+    @NonNull
     public CollectInputView getCollectInputView() {
         return collectInputView;
     }
@@ -302,16 +455,46 @@ public class CollectActivity extends ThemedActivity
 
         //lock = new Object();
 
-        infoBarAdapter = new InfoBarAdapter(this, ep.getInt(GeneralKeys.INFOBAR_NUMBER, 2), (RecyclerView) findViewById(R.id.selectorList));
-
         traitLayouts = new LayoutCollections(this);
         rangeBox = findViewById(R.id.act_collect_range_box);
         traitBox = findViewById(R.id.act_collect_trait_box);
         traitBox.connectRangeBox(rangeBox);
         rangeBox.connectTraitBox(traitBox);
 
+        //setup infobar recycler view ui
+        infoBarRv = findViewById(R.id.act_collect_infobar_rv);
+        infoBarRv.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false));
+
         initCurrentVals();
 
+        Log.d(TAG, "Load screen.");
+
+        refreshInfoBarAdapter();
+    }
+
+    /**
+     * Updates the infobar adapter with the new plot information.
+     */
+    public void refreshInfoBarAdapter() {
+
+        Log.d(TAG, "Refreshing info bar adapter.");
+
+        try {
+
+            infoBarAdapter = new InfoBarAdapter(this);
+
+            infoBarRv.setAdapter(infoBarAdapter);
+
+            List<InfoBarModel> models = infoBarHelper.getInfoBarData();
+
+            infoBarAdapter.submitList(models);
+
+        } catch (Exception e) {
+
+            e.printStackTrace();
+
+            Log.d(TAG, "Error: info bar adapter loading.");
+        }
     }
 
     @Override
@@ -320,25 +503,11 @@ public class CollectActivity extends ThemedActivity
         rangeBox.refresh();
         traitBox.setNewTraits(rangeBox.getPlotID());
 
+        Log.d(TAG, "Refresh main.");
+
         initWidgets(true);
 
         refreshLock();
-    }
-
-    @Override
-    public void playSound(String sound) {
-        try {
-            int resID = getResources().getIdentifier(sound, "raw", getPackageName());
-            MediaPlayer chimePlayer = MediaPlayer.create(CollectActivity.this, resID);
-            chimePlayer.start();
-
-            chimePlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-                public void onCompletion(MediaPlayer mp) {
-                    mp.release();
-                }
-            });
-        } catch (Exception ignore) {
-        }
     }
 
     /**
@@ -376,7 +545,7 @@ public class CollectActivity extends ThemedActivity
             removeTrait(trait);
             collectInputView.clear();
 
-            playSound("error");
+            soundHelper.playError();
 
             return false;
         }
@@ -419,7 +588,7 @@ public class CollectActivity extends ThemedActivity
         barcodeInput.setOnClickListener(v -> {
             triggerTts(barcodeTts);
             new IntentIntegrator(CollectActivity.this)
-                    .setPrompt(getString(R.string.main_barcode_text))
+                    .setPrompt(getString(R.string.barcode_scanner_text))
                     .setBeepEnabled(false)
                     .setRequestCode(BARCODE_COLLECT_CODE)
                     .initiateScan();
@@ -432,9 +601,8 @@ public class CollectActivity extends ThemedActivity
             if (status) {
                 if (getTraitFormat().equals("photo")) {
                     // I want to use abstract method
-                    Map<String, String> newTraits = traitBox.getNewTraits();
                     PhotoTraitLayout traitPhoto = traitLayouts.getPhotoTrait();
-                    traitPhoto.brapiDelete(newTraits);
+                    traitPhoto.brapiDelete();
                 } else {
                     brapiDelete(getTraitName(), false);
                 }
@@ -483,8 +651,10 @@ public class CollectActivity extends ThemedActivity
         // Reset dropdowns
 
         if (!database.isRangeTableEmpty()) {
-            String plotID = rangeBox.getPlotID();
-            infoBarAdapter.configureDropdownArray(plotID);
+
+            Log.d(TAG, "init widgets refreshing info bar");
+
+            refreshInfoBarAdapter();
         }
 
         traitBox.initTraitDetails();
@@ -529,7 +699,10 @@ public class CollectActivity extends ThemedActivity
             for (int j = 1; j <= plotIndices.length; j++) {
                 rangeBox.setRangeByIndex(j - 1);
 
-                if (rangeBox.getCRange().range.equals(range) & rangeBox.getCRange().plot.equals(plot)) {
+                RangeObject ro = rangeBox.getCRange();
+
+                //issue #634 fix for now to check the search query by plot_id which should be the unique id
+                if (Objects.equals(ro.plot_id, searchUnique)) {
                     moveToResultCore(j);
                     return true;
                 }
@@ -601,7 +774,11 @@ public class CollectActivity extends ThemedActivity
         // Reload traits based on selected plot
         rangeBox.display();
 
-        traitBox.setNewTraits(rangeBox.getPlotID());
+        String pid = rangeBox.getPlotID();
+
+        traitBox.setNewTraits(pid);
+
+        Log.d(TAG, "Move to result core: " + j);
 
         initWidgets(false);
     }
@@ -622,6 +799,8 @@ public class CollectActivity extends ThemedActivity
         traitBox.setNewTraits(rangeBox.getPlotID());
 
         traitBox.setSelection(traitIndex);
+
+        Log.d(TAG, "Move to result core: " + j);
 
         initWidgets(false);
     }
@@ -655,15 +834,17 @@ public class CollectActivity extends ThemedActivity
             Log.e(TAG, e.getMessage());
         }
 
-        verifyPersonHelper.updateLastOpenedTime();
-
         geoNavHelper.stopGeoNav();
+
+        gnssThreadHelper.stop();
 
         //save the last used trait
         if (traitBox.getCurrentTrait() != null)
             ep.edit().putString(GeneralKeys.LAST_USED_TRAIT, traitBox.getCurrentTrait().getTrait()).apply();
 
         geoNavHelper.stopAverageHandler();
+
+        ep.edit().putInt(GeneralKeys.DATA_LOCK_STATE, dataLocked).apply();
 
         super.onPause();
     }
@@ -684,9 +865,15 @@ public class CollectActivity extends ThemedActivity
             e.printStackTrace();
         }
 
+        getTraitLayout().onExit();
+
         mUsbCameraHelper.destroy();
 
+        goProWrapper.destroy();
+
         traitLayoutRefresh();
+
+        gnssThreadHelper.stop();
 
         super.onDestroy();
     }
@@ -697,6 +884,7 @@ public class CollectActivity extends ThemedActivity
 
         if (!guiThread.isAlive()) {
             try {
+                //TODO test with just .run() to avoid exception
                 guiThread.start();
             } catch (IllegalThreadStateException e) {
                 e.printStackTrace();
@@ -706,9 +894,8 @@ public class CollectActivity extends ThemedActivity
         // Update menu item visibility
         if (systemMenu != null) {
             systemMenu.findItem(R.id.help).setVisible(ep.getBoolean(GeneralKeys.TIPS, false));
-            systemMenu.findItem(R.id.jumpToPlot).setVisible(ep.getBoolean(GeneralKeys.UNIQUE_TEXT, false));
             systemMenu.findItem(R.id.nextEmptyPlot).setVisible(!ep.getString(GeneralKeys.HIDE_ENTRIES_WITH_DATA_TOOLBAR, "1").equals("1"));
-            systemMenu.findItem(R.id.barcodeScan).setVisible(ep.getBoolean(GeneralKeys.UNIQUE_CAMERA, false));
+            systemMenu.findItem(R.id.jumpToPlot).setVisible(!ep.getString(GeneralKeys.MOVE_TO_UNIQUE_ID, "1").equals("1"));
             systemMenu.findItem(R.id.datagrid).setVisible(ep.getBoolean(GeneralKeys.DATAGRID_SETTING, false));
         }
 
@@ -722,6 +909,8 @@ public class CollectActivity extends ThemedActivity
             // and display in RangeBox#reload is commented out
             rangeBox.reload();
             traitBox.setPrefixTraits();
+
+            Log.d(TAG, "On resume load data.");
 
             initWidgets(false);
             traitBox.setSelection(0);
@@ -737,6 +926,9 @@ public class CollectActivity extends ThemedActivity
             partialReload = false;
             rangeBox.display();
             traitBox.setPrefixTraits();
+
+            Log.d(TAG, "On resume partial reload data.");
+
             initWidgets(false);
 
         } else if (searchReload) {
@@ -754,13 +946,8 @@ public class CollectActivity extends ThemedActivity
             //setup logger whenever activity resumes
             geoNavHelper.setupGeoNavLogger();
 
-            secureBluetooth.withNearby((adapter) -> {
-                geoNavHelper.startGeoNav();
-                return null;
-            });
+            startGeoNav();
         }
-
-        verifyPersonHelper.checkLastOpened();
 
         if (!mSkipLastUsedTrait) {
 
@@ -768,6 +955,21 @@ public class CollectActivity extends ThemedActivity
 
             navigateToLastOpenedTrait();
 
+        }
+
+        dataLocked = ep.getInt(GeneralKeys.DATA_LOCK_STATE, UNLOCKED);
+
+        refreshLock();
+    }
+
+    private void startGeoNav() {
+        try {
+            secureBluetooth.withNearby((adapter) -> {
+                geoNavHelper.startGeoNav();
+                return null;
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
@@ -861,8 +1063,7 @@ public class CollectActivity extends ThemedActivity
         }
 
         //update the info bar in case a variable is used
-        infoBarAdapter.notifyItemRangeChanged(0, infoBarAdapter.getItemCount());
-
+        refreshInfoBarAdapter();
         refreshRepeatedValuesToolbarIndicator();
     }
 
@@ -945,9 +1146,8 @@ public class CollectActivity extends ThemedActivity
         systemMenu = menu;
 
         systemMenu.findItem(R.id.help).setVisible(ep.getBoolean(GeneralKeys.TIPS, false));
-        systemMenu.findItem(R.id.jumpToPlot).setVisible(ep.getBoolean(GeneralKeys.UNIQUE_TEXT, false));
         systemMenu.findItem(R.id.nextEmptyPlot).setVisible(!ep.getString(GeneralKeys.HIDE_ENTRIES_WITH_DATA_TOOLBAR, "1").equals("1"));
-        systemMenu.findItem(R.id.barcodeScan).setVisible(ep.getBoolean(GeneralKeys.UNIQUE_CAMERA, false));
+        systemMenu.findItem(R.id.jumpToPlot).setVisible(!ep.getString(GeneralKeys.MOVE_TO_UNIQUE_ID, "1").equals("1"));
         systemMenu.findItem(R.id.datagrid).setVisible(ep.getBoolean(GeneralKeys.DATAGRID_SETTING, false));
 
         //toggle repeated values indicator
@@ -960,8 +1160,6 @@ public class CollectActivity extends ThemedActivity
 //        actionView.setOnClickListener((View) -> onOptionsItemSelected(geoNavEnable));
 
         customizeToolbarIcons();
-
-        lockData();
 
         return true;
     }
@@ -976,8 +1174,8 @@ public class CollectActivity extends ThemedActivity
         super.onConfigurationChanged(newConfig);
     }
 
-    private TapTarget collectDataTapTargetView(int id, String title, String desc, int color, int targetRadius) {
-        return TapTargetUtil.Companion.getTapTargetSettingsView(this, findViewById(id), color, targetRadius, title, desc);
+    private TapTarget collectDataTapTargetView(int id, String title, String desc, int targetRadius) {
+        return TapTargetUtil.Companion.getTapTargetSettingsView(this, findViewById(id), title, desc, targetRadius);
     }
 
     @Override
@@ -990,7 +1188,6 @@ public class CollectActivity extends ThemedActivity
         final int resourcesId = R.id.resources;
         final int nextEmptyPlotId = R.id.nextEmptyPlot;
         final int jumpToPlotId = R.id.jumpToPlot;
-        final int barcodeScanId = R.id.barcodeScan;
         final int dataGridId = R.id.datagrid;
         final int lockDataId = R.id.lockData;
         final int summaryId = R.id.summary;
@@ -998,26 +1195,26 @@ public class CollectActivity extends ThemedActivity
         switch (item.getItemId()) {
             case helpId:
                 TapTargetSequence sequence = new TapTargetSequence(this)
-                        .targets(collectDataTapTargetView(R.id.selectorList, getString(R.string.tutorial_main_infobars_title), getString(R.string.tutorial_main_infobars_description), R.color.main_primary_dark,200),
-                                collectDataTapTargetView(R.id.traitLeft, getString(R.string.tutorial_main_traits_title), getString(R.string.tutorial_main_traits_description), R.color.main_primary_dark,60),
-                                collectDataTapTargetView(R.id.traitType, getString(R.string.tutorial_main_traitlist_title), getString(R.string.tutorial_main_traitlist_description), R.color.main_primary_dark,80),
-                                collectDataTapTargetView(R.id.rangeLeft, getString(R.string.tutorial_main_entries_title), getString(R.string.tutorial_main_entries_description), R.color.main_primary_dark,60),
-                                collectDataTapTargetView(R.id.valuesPlotRangeHolder, getString(R.string.tutorial_main_navinfo_title), getString(R.string.tutorial_main_navinfo_description), R.color.main_primary_dark,60),
-                                collectDataTapTargetView(R.id.traitHolder, getString(R.string.tutorial_main_datacollect_title), getString(R.string.tutorial_main_datacollect_description), R.color.main_primary_dark,200),
-                                collectDataTapTargetView(R.id.missingValue, getString(R.string.tutorial_main_na_title), getString(R.string.tutorial_main_na_description), R.color.main_primary,60),
-                                collectDataTapTargetView(R.id.deleteValue, getString(R.string.tutorial_main_delete_title), getString(R.string.tutorial_main_delete_description), R.color.main_primary,60)
+                        .targets(collectDataTapTargetView(R.id.act_collect_infobar_rv, getString(R.string.tutorial_main_infobars_title), getString(R.string.tutorial_main_infobars_description),200),
+                                collectDataTapTargetView(R.id.traitLeft, getString(R.string.tutorial_main_traits_title), getString(R.string.tutorial_main_traits_description),60),
+                                collectDataTapTargetView(R.id.traitType, getString(R.string.tutorial_main_traitlist_title), getString(R.string.tutorial_main_traitlist_description),80),
+                                collectDataTapTargetView(R.id.rangeLeft, getString(R.string.tutorial_main_entries_title), getString(R.string.tutorial_main_entries_description),60),
+                                collectDataTapTargetView(R.id.valuesPlotRangeHolder, getString(R.string.tutorial_main_navinfo_title), getString(R.string.tutorial_main_navinfo_description),60),
+                                collectDataTapTargetView(R.id.traitHolder, getString(R.string.tutorial_main_datacollect_title), getString(R.string.tutorial_main_datacollect_description),200),
+                                collectDataTapTargetView(R.id.missingValue, getString(R.string.tutorial_main_na_title), getString(R.string.tutorial_main_na_description),60),
+                                collectDataTapTargetView(R.id.deleteValue, getString(R.string.tutorial_main_delete_title), getString(R.string.tutorial_main_delete_description),60)
                         );
                 if (systemMenu.findItem(R.id.search).isVisible()) {
-                    sequence.target(collectDataTapTargetView(R.id.search, getString(R.string.tutorial_main_search_title), getString(R.string.tutorial_main_search_description), R.color.main_primary_dark,60));
+                    sequence.target(collectDataTapTargetView(R.id.search, getString(R.string.tutorial_main_search_title), getString(R.string.tutorial_main_search_description),60));
                 }
                 if (systemMenu.findItem(R.id.resources).isVisible()) {
-                    sequence.target(collectDataTapTargetView(R.id.resources, getString(R.string.tutorial_main_resources_title), getString(R.string.tutorial_main_resources_description), R.color.main_primary_dark,60));
+                    sequence.target(collectDataTapTargetView(R.id.resources, getString(R.string.tutorial_main_resources_title), getString(R.string.tutorial_main_resources_description),60));
                 }
                 if (systemMenu.findItem(R.id.summary).isVisible()) {
-                    sequence.target(collectDataTapTargetView(R.id.summary, getString(R.string.tutorial_main_summary_title), getString(R.string.tutorial_main_summary_description), R.color.main_primary_dark,60));
+                    sequence.target(collectDataTapTargetView(R.id.summary, getString(R.string.tutorial_main_summary_title), getString(R.string.tutorial_main_summary_description),60));
                 }
                 if (systemMenu.findItem(R.id.lockData).isVisible()) {
-                    sequence.target(collectDataTapTargetView(R.id.lockData, getString(R.string.tutorial_main_lockdata_title), getString(R.string.tutorial_main_lockdata_description), R.color.main_primary_dark,60));
+                    sequence.target(collectDataTapTargetView(R.id.lockData, getString(R.string.tutorial_main_lockdata_title), getString(R.string.tutorial_main_lockdata_description),60));
                 }
 
                 sequence.start();
@@ -1044,14 +1241,16 @@ public class CollectActivity extends ThemedActivity
 
                 break;
             case jumpToPlotId:
-                moveToPlotID();
-                break;
-            case barcodeScanId:
-                new IntentIntegrator(this)
-                        .setPrompt(getString(R.string.main_barcode_text))
-                        .setBeepEnabled(false)
-                        .setRequestCode(BARCODE_SEARCH_CODE)
-                        .initiateScan();
+                String moveToUniqueIdValue = ep.getString(GeneralKeys.MOVE_TO_UNIQUE_ID, "");
+                if (moveToUniqueIdValue.equals("2")) {
+                    moveToPlotID();
+                } else if (moveToUniqueIdValue.equals("3")) {
+                    new IntentIntegrator(this)
+                            .setPrompt(getString(R.string.barcode_scanner_text))
+                            .setBeepEnabled(false)
+                            .setRequestCode(BARCODE_SEARCH_CODE)
+                            .initiateScan();
+                }
                 break;
             case summaryId:
                 showSummary();
@@ -1068,6 +1267,7 @@ public class CollectActivity extends ThemedActivity
                 if (dataLocked == UNLOCKED) dataLocked = LOCKED;
                 else if (dataLocked == LOCKED) dataLocked = FROZEN;
                 else dataLocked = UNLOCKED;
+                ep.edit().putInt(GeneralKeys.DATA_LOCK_STATE, dataLocked).apply();
                 lockData();
                 break;
             case android.R.id.home:
@@ -1081,21 +1281,18 @@ public class CollectActivity extends ThemedActivity
 
                 Log.d(GEOTAG, "Menu item clicked.");
 
-                geoNavHelper.setMGeoNavActivated(!geoNavHelper.getMGeoNavActivated());
-                MenuItem navItem = systemMenu.findItem(R.id.action_act_collect_geonav_sw);
-                if (geoNavHelper.getMGeoNavActivated()) {
+                dialogGeoNav = new GeoNavCollectDialog(this).create();
 
-                    navItem.setIcon(R.drawable.ic_explore_black_24dp);
+                if (!dialogGeoNav.isShowing()) {
 
-                    mPrefs.edit().putBoolean(GeneralKeys.GEONAV_AUTO, true).apply();
+                    if (getWindow().isActive()) {
 
-                }
-                else {
-
-                    navItem.setIcon(R.drawable.ic_explore_off_black_24dp);
-
-                    mPrefs.edit().putBoolean(GeneralKeys.GEONAV_AUTO, false).apply();
-
+                        try {
+                            dialogGeoNav.show();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
                 }
 
                 return true;
@@ -1261,10 +1458,13 @@ public class CollectActivity extends ThemedActivity
      * unlocked, locked, or frozen
      */
     void lockData() {
-        if (dataLocked == LOCKED) {
+
+        int state = ep.getInt(GeneralKeys.DATA_LOCK_STATE, UNLOCKED);
+
+        if (state == LOCKED) {
             systemMenu.findItem(R.id.lockData).setIcon(R.drawable.ic_tb_lock);
             disableDataEntry();
-        } else if (dataLocked == UNLOCKED) {
+        } else if (state == UNLOCKED) {
             systemMenu.findItem(R.id.lockData).setIcon(R.drawable.ic_tb_unlock);
             enableDataEntry();
         } else {
@@ -1339,7 +1539,7 @@ public class CollectActivity extends ThemedActivity
             @Override
             public void onClick(DialogInterface dialogInterface, int i) {
                 new IntentIntegrator(CollectActivity.this)
-                        .setPrompt(getString(R.string.main_barcode_text))
+                        .setPrompt(getString(R.string.barcode_scanner_text))
                         .setBeepEnabled(false)
                         .setRequestCode(BARCODE_SEARCH_CODE)
                         .initiateScan();
@@ -1410,9 +1610,15 @@ public class CollectActivity extends ThemedActivity
     public boolean dispatchKeyEvent(KeyEvent event) {
         int action = event.getAction();
         int keyCode = event.getKeyCode();
+        String volumeNavigation = ep.getString(GeneralKeys.VOLUME_NAVIGATION, "0");
         switch (keyCode) {
             case KeyEvent.KEYCODE_VOLUME_UP:
-                if (ep.getBoolean(GeneralKeys.VOLUME_NAVIGATION, false)) {
+                if (volumeNavigation.equals("1")) {
+                    if (action == KeyEvent.ACTION_UP) {
+                        traitBox.moveTrait("right");
+                    }
+                    return true;
+                } else if (volumeNavigation.equals("2")) {
                     if (action == KeyEvent.ACTION_UP) {
                         rangeBox.moveEntryRight();
                     }
@@ -1420,36 +1626,35 @@ public class CollectActivity extends ThemedActivity
                 }
                 return false;
             case KeyEvent.KEYCODE_VOLUME_DOWN:
-                if (ep.getBoolean(GeneralKeys.VOLUME_NAVIGATION, false)) {
+                if (volumeNavigation.equals("1")) {
+                    if (action == KeyEvent.ACTION_UP) {
+                        traitBox.moveTrait("left");
+                    }
+                    return true;
+                } else if (volumeNavigation.equals("2")) {
                     if (action == KeyEvent.ACTION_UP) {
                         rangeBox.moveEntryLeft();
                     }
                     return true;
                 }
                 return false;
-            case KeyEvent.KEYCODE_ENTER:
-                String return_action = ep.getString(GeneralKeys.RETURN_CHARACTER, "0");
+//                else if (event.action == KeyEvent.ACTION_UP
+//                    && code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_TAB) {
+//
+//                inputEditText?.requestFocus()
+//            }
+            default:
 
-                if (return_action.equals("0")) {
-                    if (action == KeyEvent.ACTION_UP) {
-                        rangeBox.moveEntryRight();
+                if (action == KeyEvent.ACTION_UP) {
+
+                    if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_TAB) {
+
+                        collectInputView.requestFocus();
+
                         return false;
                     }
                 }
 
-                if (return_action.equals("1")) {
-                    if (action == KeyEvent.ACTION_UP) {
-                        traitBox.moveTrait("right");
-                        return true;
-                    }
-                }
-
-                if (return_action.equals("2")) {
-                    return true;
-                }
-
-                return false;
-            default:
                 return super.dispatchKeyEvent(event);
         }
     }
@@ -1488,6 +1693,11 @@ public class CollectActivity extends ThemedActivity
                     rangeBox.setAllRangeID();
                     int[] rangeID = rangeBox.getRangeID();
                     moveToSearch("id", rangeID, null, null, inputPlotId, trait);
+                    //select the rep chosen from datagrid
+                    if (collectInputView.isRepeatEnabled()) {
+                        int rep = data.getIntExtra("rep", -1);
+                        collectInputView.navigateToRep(rep);
+                    }
                     mSkipLastUsedTrait = true;
                 }
                 break;
@@ -1504,15 +1714,15 @@ public class CollectActivity extends ThemedActivity
 
                     //play success or error sound if the plotId was not found
                     if (success) {
-                        playSound("hero_simple_celebration");
+                        soundHelper.playCelebrate();
                     } else {
                         boolean found = false;
                         FieldObject studyObj = null;
-                        ObservationUnitModel[] models = ObservationUnitDao.Companion.getAll();
+                        ObservationUnitModel[] models = database.getAllObservationUnits();
                         for (ObservationUnitModel m : models) {
                             if (m.getObservation_unit_db_id().equals(inputPlotId)) {
 
-                                FieldObject study = StudyDao.Companion.getFieldObject(m.getStudy_id());
+                                FieldObject study = database.getFieldObject(m.getStudy_id());
                                 if (study != null && study.getExp_name() != null) {
                                     studyObj = study;
                                     found = true;
@@ -1528,30 +1738,12 @@ public class CollectActivity extends ThemedActivity
 
                             String msg = getString(R.string.act_collect_barcode_search_exists_in_other_field, fieldName);
 
-                            SnackbarUtils.showNavigateSnack(getLayoutInflater(), findViewById(R.id.traitHolder), msg, 8000, null,
-                                (v) -> {
-
-                                    //updates obs. range view in database
-                                    database.switchField(studyId);
-
-                                    //refresh collect activity UI
-                                    rangeBox.reload();
-                                    rangeBox.refresh();
-                                    initWidgets(false);
-
-                                    //navigate to the plot
-                                    moveToSearch("barcode", rangeID, null, null, inputPlotId, -1);
-
-                                    //update selected item in field adapter using preference
-                                    ep.edit().putString(GeneralKeys.FIELD_FILE, fieldName).apply();
-                                    ep.edit().putInt(GeneralKeys.SELECTED_FIELD_ID, studyId).apply();
-
-                                    playSound("hero_simple_celebration");
-                                });
+                            SnackbarUtils.showNavigateSnack(getLayoutInflater(), findViewById(R.id.traitHolder), msg, R.id.toolbarBottom,8000, null,
+                                (v) -> switchField(studyId, null));
 
                         } else {
 
-                            playSound("alert_error");
+                            soundHelper.playError();
 
                             Utils.makeToast(getApplicationContext(), getString(R.string.main_toolbar_moveto_no_match));
 
@@ -1808,6 +2000,10 @@ public class CollectActivity extends ThemedActivity
         return ep.getBoolean(GeneralKeys.CYCLING_TRAITS_ADVANCES, false);
     }
 
+    public boolean isReturnFirstTrait() {
+        return ep.getBoolean(GeneralKeys.RETURN_FIRST_TRAIT, false);
+    }
+
     /**
      * Inserts a user observation whenever a label is printed.
      * See ResultReceiver onReceiveResult in LabelPrintLayout
@@ -1881,10 +2077,219 @@ public class CollectActivity extends ThemedActivity
         return secureBluetooth;
     }
 
-    @NonNull
+    @Nullable
     @Override
-    public HandlerThread getAverageHandler() {
-        return geoNavHelper.getMAverageHandler();
+    public Handler getAverageHandler() {
+        return geoNavHelper.getAverageHandler();
     }
 
+    @Override
+    public void inflateTrait(@NonNull BaseTraitLayout layout) {
+        getTraitLayout().onExit();
+        View v = LayoutInflater.from(this).inflate(layout.layoutId(), null);
+        LinearLayout holder = findViewById(R.id.traitHolder);
+        holder.removeAllViews();
+        holder.addView(v);
+        layout.init(this);
+        v.setVisibility(View.VISIBLE);
+    }
+
+    @Override
+    public void onInfoBarClicked(int position) {
+
+        infoBarHelper.showInfoBarChoiceDialog(position);
+
+    }
+
+    @NonNull
+    @Override
+    public FieldSwitcher getFieldSwitcher() {
+        return fieldSwitcher;
+    }
+
+    @NonNull
+    @Override
+    public SoundHelperImpl getSoundHelper() {
+        return soundHelper;
+    }
+
+    @NonNull
+    @Override
+    public GeoNavHelper getGeoNavHelper() {
+        return geoNavHelper;
+    }
+
+    @NonNull
+    @Override
+    public GnssThreadHelper getGnssThreadHelper() {
+        return gnssThreadHelper;
+    }
+
+    @NonNull
+    @Override
+    public GoProWrapper wrapper() {
+        return goProWrapper;
+    }
+
+    @NonNull
+    @Override
+    public SecureBluetooth advisor() {
+        return secureBluetooth;
+    }
+
+    @Override
+    public String queryForLabelValue(
+            String plotId, String label, Boolean isAttribute
+    ) {
+        Context context = this;
+
+        String dataMissingString = context.getString(R.string.main_infobar_data_missing);
+
+        if (isAttribute) {
+
+            String[] values = database.getDropDownRange(label, plotId);
+            if (values == null || values.length == 0) {
+                return dataMissingString;
+            } else {
+                if (label.equals("geo_coordinates") && JsonUtil.Companion.isJsonValid(values[0])) {
+
+                    return GeoJsonUtil.Companion.decode(values[0]).toCoordinateString(";");
+
+                } else {
+
+                    return values[0];
+
+                }
+            }
+
+        } else {
+
+            String value = database.getUserDetail(plotId).get(label);
+            if (value == null) {
+                value = dataMissingString;
+            }
+
+            try {
+
+                String labelValPref = ((CollectActivity) context).getPreferences()
+                        .getString(GeneralKeys.LABELVAL_CUSTOMIZE, "value");
+                if (labelValPref == null) {
+                    labelValPref = "value";
+                }
+
+                StringJoiner joiner = new StringJoiner(":");
+                ArrayList<BrAPIScaleValidValuesCategories> scale = CategoryJsonUtil.Companion.decode(value);
+                for (BrAPIScaleValidValuesCategories s : scale) {
+                    if ("label".equals(labelValPref)) {
+                        joiner.add(s.getLabel());
+                    } else {
+                        joiner.add(s.getValue());
+                    }
+                }
+
+                return joiner.toString();
+
+            } catch (Exception ignore) {
+                return value;
+            }
+        }
+    }
+
+    @Override
+    public ArrayList<String> getGeoNavPopupSpinnerItems () {
+        //query database for attributes/traits to use
+        try {
+            List<String> attributes = Arrays.asList(getDatabase().getAllObservationUnitAttributeNames(Integer.parseInt(getStudyId())));
+            TraitObject[] traits = getDatabase().getAllTraitObjects().toArray(new TraitObject[0]);
+
+            ArrayList<TraitObject> visibleTraits = new ArrayList<>();
+            for (TraitObject traitObject : traits) {
+                if (traitObject.getVisible()) {
+                    visibleTraits.add(traitObject);
+                }
+            }
+
+            // Map traits to their names
+            List<String> traitNames = new ArrayList<>();
+            for (TraitObject traitObject : visibleTraits) {
+                traitNames.add(traitObject.getTrait());
+            }
+
+            // Combine attributes and trait names
+            ArrayList<String> result = new ArrayList<>(attributes);
+            result.addAll(traitNames);
+
+            return result;
+        } catch (Exception e) {
+            Log.d(TAG, "Error occurred when querying for attributes in GeoNavCollectDialog.");
+            e.printStackTrace();
+        }
+        return new ArrayList<>();
+    }
+    
+    @NonNull
+    @Override
+    public VibrateUtil getVibrator() {
+        return vibrator;
+    }
+
+    @NonNull
+    @Override
+    public Context getContext() {
+        return this;
+    }
+
+    public void showLocationPrecisionLossDialog() {
+
+        if (getWindow().isActive()) {
+
+            try {
+
+                if (dialogPrecisionLoss != null) {
+                    dialogPrecisionLoss.dismiss();
+                }
+
+                dialogPrecisionLoss = new androidx.appcompat.app.AlertDialog.Builder(this)
+                        .setTitle(getString(R.string.dialog_geonav_precision_loss_title))
+                        .setMessage(getString(R.string.dialog_geonav_precision_loss_msg))
+                        .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                            dialog.dismiss();
+                        })
+                        .show();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    @NonNull
+    @Override
+    public GPSTracker getGps() {
+        return gps;
+    }
+
+    @Override
+    public void onLocationChanged(@NonNull Location location) {
+
+        TraitObject trait = getCurrentTrait();
+
+        if (trait != null) {
+
+            if (trait.getFormat().equals("gnss")) {
+
+                ((GNSSTraitLayout) traitLayouts.getTraitLayout("gnss"))
+                        .onLocationChanged(location);
+
+            }
+        }
+    }
+
+    @Override
+    public Location getLocation() {
+
+        if (gps == null) return null;
+
+        return gps.getLocation(0, 0);
+    }
 }

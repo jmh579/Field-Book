@@ -1,5 +1,6 @@
 package com.fieldbook.tracker.traits;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.provider.Settings;
@@ -35,8 +36,13 @@ public class LocationTraitLayout extends BaseTraitLayout {
     }
 
     @Override
-    public void init() {
-        ImageButton getLocation = findViewById(R.id.getLocationBtn);
+    public int layoutId() {
+        return R.layout.trait_location;
+    }
+
+    @Override
+    public void init(Activity act) {
+        ImageButton getLocation = act.findViewById(R.id.getLocationBtn);
 
         String locationSavedTts = getContext().getString(R.string.trait_location_saved_tts);
 
@@ -50,7 +56,7 @@ public class LocationTraitLayout extends BaseTraitLayout {
             if (gps.canGetLocation()) { //GPS enabled
                 lat = gps.getLatitude(); // returns latitude
                 lng = gps.getLongitude(); // returns longitude
-                fullLocation = Utils.truncateDecimalString(String.valueOf(lat), 8) + "; " + Utils.truncateDecimalString(String.valueOf(lng), 8);
+                fullLocation = Utils.truncateDecimalString(String.valueOf(lng), 8) + "; " + Utils.truncateDecimalString(String.valueOf(lat), 8);
             } else {
                 Intent intent = new Intent(
                         Settings.ACTION_LOCATION_SOURCE_SETTINGS);
@@ -60,6 +66,8 @@ public class LocationTraitLayout extends BaseTraitLayout {
             updateObservation(getCurrentTrait().getTrait(), "location", fullLocation);
             triggerTts(locationSavedTts);
         });
+
+        getLocation.requestFocus();
     }
 
     @Override

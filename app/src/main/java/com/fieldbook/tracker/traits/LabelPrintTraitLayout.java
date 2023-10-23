@@ -25,6 +25,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import com.fieldbook.tracker.R;
 import com.fieldbook.tracker.activities.CollectActivity;
 import com.fieldbook.tracker.preferences.GeneralKeys;
+import com.fieldbook.tracker.utilities.BluetoothChooseCallback;
 import com.fieldbook.tracker.utilities.BluetoothUtil;
 import com.fieldbook.tracker.utilities.Constants;
 
@@ -35,6 +36,8 @@ import java.util.Calendar;
 import java.util.HashMap;
 
 public class LabelPrintTraitLayout extends BaseTraitLayout {
+
+    private static final String TAG = LabelPrintTraitLayout.class.getSimpleName();
 
     static public String type = "zebra label print";
 
@@ -53,6 +56,10 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
     private Spinner textfield4;
     private Spinner barcodefield;
     private Spinner labelcopies;
+
+    private ImageButton connectPrinter;
+    private  ImageView label;
+    private ImageButton printLabel;
 
     private BluetoothUtil mBluetoothUtil;
 
@@ -76,8 +83,8 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
     }
 
     @Override
-    public void init() {
-
+    public int layoutId() {
+        return R.layout.trait_labelprint;
     }
 
     private boolean checkPermissions(Activity act) {
@@ -155,6 +162,9 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
 
         mActivity = act;
 
+        connectPrinter = act.findViewById(R.id.connectPrinterButton);
+        printLabel = act.findViewById(R.id.printLabelButton);
+        LocalBroadcastManager.getInstance(getContext()).unregisterReceiver(mPrinterMessageReceiver);
         LocalBroadcastManager.getInstance(getContext()).registerReceiver(mPrinterMessageReceiver,
                 new IntentFilter("printer_message"));
 
@@ -179,13 +189,13 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
         copiesArrayAdapter = new ArrayAdapter<>(
                 getContext(), R.layout.custom_spinner_layout, labelCopiesArray);
 
-        labelsize = findViewById(R.id.labelsize);
-        textfield1 = findViewById(R.id.textfield);
-        textfield2 = findViewById(R.id.textfield2);
-        textfield3 = findViewById(R.id.textfield3);
-        textfield4 = findViewById(R.id.textfield4);
-        barcodefield = findViewById(R.id.barcodefield);
-        labelcopies = findViewById(R.id.labelcopies);
+        labelsize = act.findViewById(R.id.labelsize);
+        textfield1 = act.findViewById(R.id.textfield);
+        textfield2 = act.findViewById(R.id.textfield2);
+        textfield3 = act.findViewById(R.id.textfield3);
+        textfield4 = act.findViewById(R.id.textfield4);
+        barcodefield = act.findViewById(R.id.barcodefield);
+        labelcopies = act.findViewById(R.id.labelcopies);
 
         labelsize.setAdapter(sizeArrayAdapter);
         textfield1.setAdapter(fieldArrayAdapter);
@@ -195,6 +205,9 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
         barcodefield.setAdapter(fieldArrayAdapter);
         labelcopies.setAdapter(copiesArrayAdapter);
 
+        label = act.findViewById(R.id.labelPreview);
+
+        label.requestFocus();
     }
 
     @Override
@@ -208,9 +221,7 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
                 @Override
                 public void onItemSelected(AdapterView<?> arg0, View arg1,
                                            int pos, long arg3) {
-                    Log.d(CollectActivity.TAG, labelsize.getSelectedItem().toString());
-
-                    ImageView label = findViewById(R.id.labelPreview);
+                    Log.d(TAG, labelsize.getSelectedItem().toString());
 
                     if (labelsize.getSelectedItem().toString().equals("3\" x 2\" detailed") || labelsize.getSelectedItem().toString().equals("2\" x 1\" detailed")) {
                         ((View) textfield2.getParent()).setVisibility(View.VISIBLE);
@@ -286,12 +297,21 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
             e.printStackTrace();
 
         }
+        connectPrinter.setOnClickListener(view -> {
+
+            mBluetoothUtil.choose(getContext(), new BluetoothChooseCallback() {
+                @Override
+                public void onDeviceChosen(String newDeviceName) {
+                    saveDeviceNamePreference(newDeviceName);
+                }
+            });
+
+        });
 
         /*
          * This section handles print events. TODO: Create a label prototype based class. Move most of this logic to a function/class. chaneylc 8/26/2020
          * More info on prototyping: https://refactoring.guru/design-patterns/prototype
          */
-        ImageButton printLabel = findViewById(R.id.printLabelButton);
         printLabel.setOnClickListener(view -> {
 
             if (checkPermissions(mActivity)) {
@@ -384,7 +404,11 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
                     labelData = labelData.replace("size2", size2);
                     labelData = labelData.replace("size3", size3);
                     labelData = labelData.replace("size4", size4);
-                    labelData = labelData.replace("barcode", barcode);
+                    if (barcode.isEmpty()) { // remove barcode if it will not encode anything
+                        labelData = labelData.replace("^BQ,,sizeb^FDMA,barcode^FS", "");
+                    } else {
+                        labelData = labelData.replace("barcode", barcode);
+                    }
                     labelData = labelData.replace("sizeb", Integer.toString(barcode_size));
 
                 }
@@ -408,7 +432,20 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
                          * This bluetooth utility class is used to connect with a paired printer and send print commands.
                          * A local broadcast receiver is used to communicate with the print thread within this utility class.
                          */
-                        mBluetoothUtil.print(getContext(), size, labels);
+                        String printerName = getPrefs().getString(GeneralKeys.LABEL_PRINT_DEVICE_NAME, null);
+                        Log.d(TAG, "retrieved printerName is " + printerName);
+                        if (printerName == null) {
+                            mBluetoothUtil.choose(getContext(), new BluetoothChooseCallback() {
+                                @Override
+                                public void onDeviceChosen(String newDeviceName) {
+                                    Log.d(TAG, "Chosen printerName is " + newDeviceName);
+                                    saveDeviceNamePreference(newDeviceName);
+                                    mBluetoothUtil.print(getContext(), newDeviceName, size, labels);
+                                }
+                            });
+                        } else {
+                            mBluetoothUtil.print(getContext(), printerName, size, labels);
+                        }
                     }
                 }
             } else {
@@ -417,6 +454,12 @@ public class LabelPrintTraitLayout extends BaseTraitLayout {
 
             }
         });
+    }
+
+    private void saveDeviceNamePreference(String newDeviceName) {
+        SharedPreferences.Editor editor = getPrefs().edit();
+        editor.putString(GeneralKeys.LABEL_PRINT_DEVICE_NAME, newDeviceName);
+        editor.apply();
     }
 
     @Override

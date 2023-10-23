@@ -11,6 +11,7 @@ import android.graphics.Rect;
 import android.location.Location;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.provider.OpenableColumns;
@@ -45,16 +46,18 @@ import com.fieldbook.tracker.dialogs.FieldCreatorDialog;
 import com.fieldbook.tracker.dialogs.FieldSortDialog;
 import com.fieldbook.tracker.interfaces.FieldAdapterController;
 import com.fieldbook.tracker.interfaces.FieldSortController;
+import com.fieldbook.tracker.interfaces.FieldSwitcher;
 import com.fieldbook.tracker.location.GPSTracker;
 import com.fieldbook.tracker.objects.FieldFileObject;
 import com.fieldbook.tracker.objects.FieldObject;
 import com.fieldbook.tracker.preferences.GeneralKeys;
 import com.fieldbook.tracker.utilities.DocumentTreeUtil;
+import com.fieldbook.tracker.utilities.FieldSwitchImpl;
+import com.fieldbook.tracker.utilities.SnackbarUtils;
 import com.fieldbook.tracker.utilities.TapTargetUtil;
 import com.fieldbook.tracker.utilities.Utils;
 import com.getkeepsafe.taptargetview.TapTarget;
 import com.getkeepsafe.taptargetview.TapTargetSequence;
-import com.google.android.material.snackbar.Snackbar;
 
 import org.phenoapps.utils.BaseDocumentTreeUtil;
 
@@ -105,6 +108,9 @@ public class FieldEditorActivity extends ThemedActivity
     @Inject
     DataHelper database;
 
+    @Inject
+    FieldSwitchImpl fieldSwitcher;
+
     // Creates a new thread to do importing
     private final Runnable importRunnable = new Runnable() {
         public void run() {
@@ -120,7 +126,7 @@ public class FieldEditorActivity extends ThemedActivity
     // Helper function to load data
     public void loadData(ArrayList<FieldObject> fields) {
         try {
-            mAdapter = new FieldAdapter(thisActivity, fields);
+            mAdapter = new FieldAdapter(thisActivity, fields, fieldSwitcher);
             fieldList.setAdapter(mAdapter);
         } catch (Exception e) {
             e.printStackTrace();
@@ -170,9 +176,8 @@ public class FieldEditorActivity extends ThemedActivity
         thisActivity = this;
         database.updateExpTable(false, true, false, ep.getInt(GeneralKeys.SELECTED_FIELD_ID, 0));
         fieldList = findViewById(R.id.myList);
-        mAdapter = new FieldAdapter(thisActivity, database.getAllFieldObjects());
+        mAdapter = new FieldAdapter(thisActivity, database.getAllFieldObjects(), fieldSwitcher);
         fieldList.setAdapter(mAdapter);
-
     }
 
     private void showFileDialog() {
@@ -180,10 +185,14 @@ public class FieldEditorActivity extends ThemedActivity
         View layout = inflater.inflate(R.layout.dialog_list_buttonless, null);
 
         ListView importSourceList = layout.findViewById(R.id.myList);
-        String[] importArray = new String[3];
+        String[] importArray = new String[2];
         importArray[0] = getString(R.string.import_source_local);
         importArray[1] = getString(R.string.import_source_cloud);
-        importArray[2] = getString(R.string.import_source_brapi);
+        if (ep.getBoolean(GeneralKeys.BRAPI_ENABLED, false)) {
+            String displayName = ep.getString(GeneralKeys.BRAPI_DISPLAY_NAME, getString(R.string.preferences_brapi_server_test));
+            importArray = Arrays.copyOf(importArray, importArray.length + 1);
+            importArray[2] = displayName;
+        }
 
 
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, R.layout.list_item_dialog_list, importArray);
@@ -265,15 +274,16 @@ public class FieldEditorActivity extends ThemedActivity
 
     @AfterPermissionGranted(PERMISSIONS_REQUEST_STORAGE)
     public void loadLocalPermission() {
-        String[] perms = {Manifest.permission.READ_EXTERNAL_STORAGE};
-        if (EasyPermissions.hasPermissions(this, perms)) {
-            loadLocal();
-        } else {
-            // Do not have permissions, request them now
-            EasyPermissions.requestPermissions(this, getString(R.string.permission_rationale_storage_import),
-                    PERMISSIONS_REQUEST_STORAGE, perms);
-        }
-
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            String[] perms = {Manifest.permission.READ_EXTERNAL_STORAGE};
+            if (EasyPermissions.hasPermissions(this, perms)) {
+                loadLocal();
+            } else {
+                // Do not have permissions, request them now
+                EasyPermissions.requestPermissions(this, getString(R.string.permission_rationale_storage_import),
+                        PERMISSIONS_REQUEST_STORAGE, perms);
+            }
+        } else loadLocal();
     }
 
     @Override
@@ -298,8 +308,8 @@ public class FieldEditorActivity extends ThemedActivity
         return TapTargetUtil.Companion.getTapTargetSettingsRect(this, item, title, desc);
     }
 
-    private TapTarget fieldsTapTargetMenu(int id, String title, String desc) {
-        return TapTargetUtil.Companion.getTapTargetSettingsView(this, findViewById(id), title, desc);
+    private TapTarget fieldsTapTargetMenu(int id, String title, String desc, int targetRadius) {
+        return TapTargetUtil.Companion.getTapTargetSettingsView(this, findViewById(id), title, desc, targetRadius);
     }
 
     //TODO
@@ -313,8 +323,8 @@ public class FieldEditorActivity extends ThemedActivity
         switch (item.getItemId()) {
             case R.id.help:
                 TapTargetSequence sequence = new TapTargetSequence(this)
-                        .targets(fieldsTapTargetMenu(R.id.importField, getString(R.string.tutorial_fields_add_title), getString(R.string.tutorial_fields_add_description)),
-                                fieldsTapTargetMenu(R.id.importField, getString(R.string.tutorial_fields_add_title), getString(R.string.tutorial_fields_file_description))
+                        .targets(fieldsTapTargetMenu(R.id.importField, getString(R.string.tutorial_fields_add_title), getString(R.string.tutorial_fields_add_description), 60),
+                                fieldsTapTargetMenu(R.id.importField, getString(R.string.tutorial_fields_add_title), getString(R.string.tutorial_fields_file_description), 60)
                         );
 
                 if (fieldExists()) {
@@ -356,7 +366,7 @@ public class FieldEditorActivity extends ThemedActivity
 
                     //update list of fields
                     fieldList = findViewById(R.id.myList);
-                    mAdapter = new FieldAdapter(thisActivity, database.getAllFieldObjects());
+                    mAdapter = new FieldAdapter(thisActivity, database.getAllFieldObjects(), fieldSwitcher);
                     fieldList.setAdapter(mAdapter);
 
                 }));
@@ -431,32 +441,39 @@ public class FieldEditorActivity extends ThemedActivity
 
                     int studyId = model.getStudy_id();
 
+                    FieldObject study = database.getFieldObject(studyId);
+
+                    String studyName = study.getExp_name();
+
                     if (studyId == ep.getInt(GeneralKeys.SELECTED_FIELD_ID, -1)) {
 
-                        Snackbar.make(findViewById(R.id.field_editor_parent_linear_layout),
+                        SnackbarUtils.showNavigateSnack(getLayoutInflater(),
+                                findViewById(R.id.main_content),
                                 getString(R.string.activity_field_editor_switch_field_same),
-                                Snackbar.LENGTH_LONG).show();
+                                null,
+                                8000, null, null
+                                );
+//                        Snackbar.make(findViewById(R.id.field_editor_parent_linear_layout),
+//                                Snackbar.LENGTH_LONG).show();
 
                     } else {
 
-                        Snackbar mySnackbar = Snackbar.make(findViewById(R.id.field_editor_parent_linear_layout),
-                                getString(R.string.activity_field_editor_switch_field, String.valueOf(studyId)),
-                                Snackbar.LENGTH_LONG);
+                        SnackbarUtils.showNavigateSnack(
+                                getLayoutInflater(),
+                                findViewById(R.id.main_content),
+                                getString(R.string.activity_field_editor_switch_field, studyName),
+                                null,
+                                8000,
+                                null, (v) -> {
+                                    int count = mAdapter.getCount();
 
-                        mySnackbar.setAction(R.string.activity_field_editor_switch_field_action, (view) -> {
-
-                            int count = mAdapter.getCount();
-
-                            for (int i = 0; i < count; i++) {
-                                FieldObject field = mAdapter.getItem(i);
-                                if (field.getExp_id() == studyId) {
-                                    mAdapter.getView(i, null, null).performClick();
-                                }
-                            }
-
-                        });
-
-                        mySnackbar.show();
+                                    for (int i = 0; i < count; i++) {
+                                        FieldObject field = mAdapter.getItem(i);
+                                        if (field.getExp_id() == studyId) {
+                                            mAdapter.getView(i, null, null).performClick();
+                                        }
+                                    }
+                                });
                     }
                 }
 
@@ -799,7 +816,8 @@ public class FieldEditorActivity extends ThemedActivity
             database.updateStudySort(joiner.toString(), field.getExp_id());
 
             if (ep.getInt(GeneralKeys.SELECTED_FIELD_ID, 0) == field.getExp_id()) {
-                database.switchField(field.getExp_id());
+
+                fieldSwitcher.switchField(field);
                 CollectActivity.reloadData = true;
             }
 
@@ -837,5 +855,11 @@ public class FieldEditorActivity extends ThemedActivity
     @Override
     public SharedPreferences getPreferences() {
         return PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+    }
+
+    @NonNull
+    @Override
+    public FieldSwitcher getFieldSwitcher() {
+        return fieldSwitcher;
     }
 }
