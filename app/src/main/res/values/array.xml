@@ -112,6 +112,18 @@
         <item>4</item>
     </string-array>
 
+    <string-array name="pref_general_scan_to_move_entries">
+        <item>@string/preferences_general_scan_to_move_disabled</item>
+        <item>@string/preferences_general_scan_to_move_barcode_camera</item>
+        <item>@string/preferences_general_scan_to_move_bluetooth</item>
+    </string-array>
+
+    <string-array name="pref_general_scan_to_move_values">
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+
     <string-array name="pref_brapi_version">
         <item>@string/preferences_brapi_version_v1</item>
         <item>@string/preferences_brapi_version_v2</item>

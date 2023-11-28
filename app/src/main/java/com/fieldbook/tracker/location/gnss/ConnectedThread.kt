@@ -10,7 +10,7 @@ import java.io.InputStream
  * Thread implementation that reads strings with \r\n ending.
  * Takes a bluetooth socket, created in ConnectThread and a handler used to broadcast messages.
  */
-class ConnectedThread constructor(private val socket: BluetoothSocket, val handler: Handler): Thread() {
+class ConnectedThread constructor(private val socket: BluetoothSocket, val handler: Handler, private val outputCode: Int): Thread() {
 
     private lateinit var mmInStream: InputStream
     private lateinit var mmBuffer: ByteArray
@@ -44,8 +44,11 @@ class ConnectedThread constructor(private val socket: BluetoothSocket, val handl
 
                 val msg = String(mmBuffer, 0, bytes-1)
 
+//                val readMsg = handler.obtainMessage(
+//                        GNSSResponseReceiver.MESSAGE_OUTPUT_CODE, bytes, -1,
+//                        msg)
                 val readMsg = handler.obtainMessage(
-                        GNSSResponseReceiver.MESSAGE_OUTPUT_CODE, bytes, -1,
+                        outputCode, bytes, -1,
                         msg)
 
                 readMsg.sendToTarget()

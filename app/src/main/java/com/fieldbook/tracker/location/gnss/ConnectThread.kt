@@ -7,7 +7,7 @@ import android.util.Log
 import java.io.IOException
 import java.util.UUID
 
-class ConnectThread(device: BluetoothDevice, private val handler: Handler) : Thread() {
+class ConnectThread(device: BluetoothDevice, private val handler: Handler, private val outputCode: Int, private val failureCode: Int) : Thread() {
 
     private val mmSocket: BluetoothSocket?
     private var mConnectedThread: ConnectedThread? = null
@@ -46,8 +46,10 @@ class ConnectThread(device: BluetoothDevice, private val handler: Handler) : Thr
 
             connectException.printStackTrace()
 
+//            val readMsg = handler.obtainMessage(
+//                GNSSResponseReceiver.MESSAGE_OUTPUT_FAIL, 0, -1, "fail")
             val readMsg = handler.obtainMessage(
-                GNSSResponseReceiver.MESSAGE_OUTPUT_FAIL, 0, -1, "fail")
+                    failureCode, 0, -1, "fail")
 
             readMsg.sendToTarget()
 
@@ -58,7 +60,7 @@ class ConnectThread(device: BluetoothDevice, private val handler: Handler) : Thr
 
         if (success) {
             mmSocket?.let { sock ->
-                mConnectedThread = ConnectedThread(sock, handler)
+                mConnectedThread = ConnectedThread(sock, handler, outputCode)
                 mConnectedThread?.start()
             }
         }
